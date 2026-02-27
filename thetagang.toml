@@ -5,7 +5,7 @@ schema_version = 2
 strategies = ["wheel", "vix_call_hedge", "cash_management"]
 [runtime.account]
 # The account number to operate on
-number = "DU1234567"
+number = "U15981136"
 
 # Cancel any existing orders for the symbols configured at startup
 cancel_orders = true
@@ -133,7 +133,7 @@ path = "data/thetagang.db"
 # url = "sqlite:////path/to/thetagang.db"
 
 [runtime.ib_async]
-logfile = '/etc/thetagang/ib_async.log'
+logfile = './ib_async.log'
 
 # Typically the amount of time needed when waiting on data from the IBKR API.
 # Sometimes it can take a while to retrieve data, and it's lazy-loaded by the
@@ -150,7 +150,7 @@ api_response_wait_time = 60
 # https://ib-insync.readthedocs.io/api.html#ibc for details.
 gateway     = true
 ibcPath     = '/opt/ibc'
-tradingMode = 'paper'
+tradingMode = 'live'
 # Set this to true if you want to raise an exception on request errors. Under
 # normal operation this should be false because we often try to make "invalid"
 # requests when scanning option chains for example.
@@ -158,7 +158,7 @@ RaiseRequestErrors = false
 password           = 'demo'
 userid             = 'demo'
 # Change this to point to your config.ini for IBC
-ibcIni = '/etc/thetagang/config.ini'
+ibcIni = './ibc-config.ini'
 # Change or unset this to use something other than the Docker bundled OpenJDK.
 javaPath = '/opt/java/openjdk/bin'
 
