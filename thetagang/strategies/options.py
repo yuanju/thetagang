@@ -70,6 +70,7 @@ async def run_option_write_stages(
     print("7------")
     print(deps.enabled_stages)
     if "options_write_puts" in deps.enabled_stages:
+        # 决策分析，判断当前市场环境下，哪些股票应该卖出看跌期权（Cash Secured Put 现金担保看跌期权），以及卖出多少合约。
         (
             positions_table,
             put_actions_table,
@@ -84,6 +85,7 @@ async def run_option_write_stages(
         await deps.write_service.write_puts(puts_to_write)
 
     if "options_write_calls" in deps.enabled_stages:
+        # 决策分析，判断当前市场环境下，是否应该卖出看涨期权（Covered Call 备竞看涨期权），以及卖出多少合约
         (
             call_actions_table,
             calls_to_write,

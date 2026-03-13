@@ -237,7 +237,6 @@ class IBKR:
         async def ticker_handler(ticker: Ticker) -> None:
             required_tasks = [handler(ticker) for _, handler in required_handlers]
             optional_tasks = [handler(ticker) for _, handler in optional_handlers]
-
             # Gather results, allowing optional tasks to potentially fail (timeout)
             results = await asyncio.gather(
                 asyncio.gather(*required_tasks),

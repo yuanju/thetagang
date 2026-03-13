@@ -87,7 +87,7 @@ def start(
             sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         data_store = DataStore(db_url, config_path, dry_run, raw_config)
 
-    _configure_ib_async_logging(config.runtime.ib_async.logfile)
+    _configure_ib_async_logging(config.runtime.ib_async.logfile) # 配置ib_async日志
 
     # Check if exchange is open before continuing
     if need_to_exit(config.runtime.exchange_hours):
@@ -111,6 +111,12 @@ def start(
         run_stage_order=run_stage_order,
     )
 
+# Probe Contract 监测合约
+#  Watchdog 是 IB Gateway/TWS 的连接监控器，它会：
+# 1. 定时探测市场数据 - 通过请求 SPY 的实时行情来验证 IB 连接是否正常
+# 2. 检测连接状态 - 如果探测超时，说明与 IB Gateway 的连接可能断开
+# 3. 自动重连 - 触发重连机制或执行其他恢复操作
+# 选择 SPY 是因为它是流动性最好的 ETF之一，市场数据稳定可靠，适合作为连接健康状态的"探针"。
     probe_contract_config = config.runtime.watchdog.probeContract
     watchdog_config = config.runtime.watchdog
     probeContract = Contract(
@@ -129,12 +135,12 @@ def start(
 
         ib.RaiseRequestErrors = ibc_config.RaiseRequestErrors
 
+        # 只有ibc模式下才会有watchdog, 也才会进行检测连接状态和自动重连。
         watchdog = Watchdog(
             ibc, ib, probeContract=probeContract, **watchdog_config.to_dict()
         )
 
         async def run_with_watchdog() -> None:
-            print("run with watchdog")
             watchdog.start()
             try:
                 await completion_future

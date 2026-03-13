@@ -75,8 +75,9 @@ from thetagang.util import (
 from .options import option_dte
 
 # Turn off some of the more annoying logging output from ib_async
-logging.getLogger("ib_async.ib").setLevel(logging.ERROR)
-logging.getLogger("ib_async.wrapper").setLevel(logging.CRITICAL)
+#logging.getLogger("ib_async.ib").setLevel(logging.ERROR)
+#logging.getLogger("ib_async.wrapper").setLevel(logging.CRITICAL)
+#logging.getLogger("ib_async.wrapper").setLevel(logging.ERROR)
 
 
 class PortfolioManager:
@@ -654,6 +655,7 @@ class PortfolioManager:
         try:
             if self.data_store:
                 self.data_store.record_event("run_start", {"dry_run": self.dry_run})
+            # 设置market_data_type + 取消所配置的股票代码所属的订单(如果配置了取消)
             self.initialize_account()
             (account_summary, portfolio_positions) = await self.summarize_account()
 
@@ -670,7 +672,9 @@ class PortfolioManager:
             management_stage_ids = {"options_roll_positions", "options_close_positions"}
             post_stage_ids = {"post_vix_call_hedge", "post_cash_management"}
             option_stage_ids = write_stage_ids | management_stage_ids
-            refresh_before_stage_ids = management_stage_ids | post_stage_ids
+            refresh_before_stage_ids = management_stage_ids | post_stage_ids # 更新阶段id
+
+            #预管理阶段id，如果做了这些操作，用户的持仓数据就可能已发生了变化
             pre_management_trade_stage_ids = {
                 "options_write_puts",
                 "options_write_calls",
@@ -693,6 +697,7 @@ class PortfolioManager:
                     positions_might_be_stale = False
 
                 if stage_id in write_stage_ids:
+                    # 运行卖期权阶段, 这里只生成订单，不会产生实际交易挂单
                     await run_option_write_stages(
                         self._options_strategy_deps({stage_id}),
                         account_summary,
@@ -705,6 +710,8 @@ class PortfolioManager:
                         and stage_index[stage_id]
                         < stage_index["options_close_positions"]
                     ):
+                        # 运行期权管理 哪些要平仓，哪些要期权轮转（Roll）(期权轮转是指将即将到期的期权合约平仓，同时开仓相同标的的新期权合约)
+                        # tip: 一个是直接平仓，持仓变为0;一个是先平仓再开新仓位，保持持仓。
                         await run_option_management_stages(
                             self._options_strategy_deps(
                                 {"options_roll_positions", "options_close_positions"}
@@ -755,6 +762,7 @@ class PortfolioManager:
 
                 self.orders.print_summary()
             else:
+                # 如果非dry-run模式，提交订单
                 self.submit_orders()
 
                 try:
@@ -764,6 +772,7 @@ class PortfolioManager:
                     # Keep running and let later status checks/logs report open orders.
                     log.warning(f"Order submission wait timed out: {exc}")
 
+                # 在订单提交后，经过一段延迟，重新获取市场价格，缩窄买卖价差（tighten spread），提高成交概率。
                 await self.adjust_prices()
 
                 try:
@@ -1054,7 +1063,8 @@ class PortfolioManager:
         for contract, order, intent_id in self.orders.records():
             self.trades.submit_order(contract, order, intent_id=intent_id)
         self.trades.print_summary()
-
+    
+    #在订单提交后，经过一段延迟，重新获取市场价格，缩窄买卖价差（tighten spread），提高成交概率。
     async def adjust_prices(self) -> None:
         if (
             all(

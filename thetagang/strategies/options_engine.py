@@ -410,7 +410,7 @@ class OptionsStrategyEngine:
                 limit_price=round(get_higher_price(sell_ticker), 2),
             )
             self.order_ops.enqueue_order(sell_ticker.contract, order)
-
+    # 它是一个决策分析函数，用于判断当前市场环境下，哪些股票应该卖出看跌期权（Cash Secured Put），以及卖出多少合约。
     async def check_if_can_write_puts(
         self,
         account_summary: Dict[str, AccountValue],
@@ -451,19 +451,19 @@ class OptionsStrategyEngine:
 
         positions_summary_table = Table(title="Positions summary", show_edge=False)
         positions_summary_table.add_column("Symbol")
-        positions_summary_table.add_column("Shares", justify="right")
-        positions_summary_table.add_column("Short puts", justify="right")
-        positions_summary_table.add_column("Long puts", justify="right")
+        positions_summary_table.add_column("Shares 股票仓位", justify="right")
+        positions_summary_table.add_column("Short puts 卖出看跌期权", justify="right")
+        positions_summary_table.add_column("Long puts 买入看跌期权", justify="right")
         if calculate_net_contracts:
-            positions_summary_table.add_column("Net short puts", justify="right")
-        positions_summary_table.add_column("Short calls", justify="right")
-        positions_summary_table.add_column("Long calls", justify="right")
+            positions_summary_table.add_column("Net short puts 净卖出看跌期权", justify="right")
+        positions_summary_table.add_column("Short calls 卖出看涨期权", justify="right")
+        positions_summary_table.add_column("Long calls 买入看涨期权", justify="right")
         if calculate_net_contracts:
-            positions_summary_table.add_column("Net short calls", justify="right")
-        positions_summary_table.add_column("Target value", justify="right")
-        positions_summary_table.add_column("Target share qty", justify="right")
-        positions_summary_table.add_column("Net target shares", justify="right")
-        positions_summary_table.add_column("Net target contracts", justify="right")
+            positions_summary_table.add_column("Net short calls 净卖出看涨期权", justify="right")
+        positions_summary_table.add_column("Target value 目标价值", justify="right")
+        positions_summary_table.add_column("Target share qty 目标股份数量", justify="right")
+        positions_summary_table.add_column("Net target shares 净目标股份数 / 合成股份数", justify="right")
+        positions_summary_table.add_column("Net target contracts 净目标合约数", justify="right")
 
         put_actions_table = Table(title="Put writing summary")
         put_actions_table.add_column("Symbol")
@@ -974,6 +974,7 @@ class OptionsStrategyEngine:
 
         return False
 
+    # 检查哪些pull可roll, 哪些put可close
     async def check_puts(
         self, portfolio_positions: Dict[str, List[PortfolioItem]]
     ) -> Tuple[List[Any], List[Any], Group]:
@@ -1013,6 +1014,7 @@ class OptionsStrategyEngine:
         )
         return (rollable_puts, closeable_puts, group)
 
+    # 检查哪些call可roll，哪些call可close
     async def check_calls(
         self, portfolio_positions: Dict[str, List[PortfolioItem]]
     ) -> Tuple[List[Any], List[Any], Group]:

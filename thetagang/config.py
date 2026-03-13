@@ -44,14 +44,14 @@ STAGE_KIND_BY_ID: dict[str, str] = {
     "post_vix_call_hedge": "post.vix_call_hedge",
     "post_cash_management": "post.cash_management",
 }
-
+# canonical 规范阶段顺序
 CANONICAL_STAGE_ORDER: list[str] = [
     "options_write_puts",
     "options_write_calls",
-    "equity_regime_rebalance",
+    "equity_regime_rebalance",  # 股权制度再平衡
     "equity_buy_rebalance",
     "equity_sell_rebalance",
-    "options_roll_positions",
+    "options_roll_positions",   # 权限滚动仓位
     "options_close_positions",
     "post_vix_call_hedge",
     "post_cash_management",
@@ -226,7 +226,9 @@ class RunConfig(BaseModel):
         enabled: set[str] = set()
         for strategy_id in self.strategies:
             enabled.update(STRATEGY_STAGE_IDS[strategy_id])
-
+        # Console().print(Panel(enabled, title="enabled "))
+        # print('self.strategies', self.strategies)
+        # print('enabled', enabled)
         ordered_ids = [
             stage_id for stage_id in CANONICAL_STAGE_ORDER if stage_id in enabled
         ]
