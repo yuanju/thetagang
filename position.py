@@ -55,7 +55,7 @@ async def fetch_market_prices(ib: IB, positions: list) -> dict:
     for pos in positions:
         contract = pos.contract
         # 使用 reqMktData 获取实时价格
-        ticker = ib.reqMarketData(contract, genericTickList="", regulatorySnapshot=False)
+        ticker = ib.reqMktData(contract, genericTickList="", regulatorySnapshot=False)
         # 等待价格更新
         await asyncio.sleep(0.5)
         if ticker and ticker.marketPrice:
