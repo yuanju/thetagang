@@ -1,0 +1,54 @@
+@startuml ThetaGang Income Sources
+!theme toy
+skinparam linetype ortho
+
+title ThetaGang 净收益来源分解
+
+skinparam rectangle {
+  BackgroundColor #F0F8FF
+  BorderColor #4169E1
+}
+
+skinparam arrow {
+  Color #4169E1
+}
+
+rectangle "净收益 (Net Income)" as NI #98FB98 {
+
+  rectangle "权利金收入 (Premium Income)" as PI #FFD700 {
+    card "卖出看跌期权" as CSP
+    card "卖出备兑看涨期权" as CC
+  }
+
+  rectangle "资本利得 (Capital Gains)" as CG #87CEEB {
+    card "低买高卖股票" as STOCK
+    card "行权价-成本价差" as DIFF
+  }
+
+  rectangle "其他收益" as OI #DDA0DD {
+    card "已实现盈亏" as RP
+  }
+}
+
+NI --> PI
+NI --> CG
+NI --> OI
+
+note bottom of NI
+  净收益 = Σ权利金 + Σ股票价差 + Σ已实现盈亏
+end note
+
+note bottom of CSP
+  Cash Secured Put
+  股价>行权价 = 获得全部权利金
+  股价<行权价 = 需买入股票
+end note
+
+note bottom of CC
+  Covered Call
+  需先持有股票
+  股价<行权价 = 保留权利金+股票
+  股价>行权价 = 卖出股票+权利金
+end note
+
+@enduml

@@ -49,16 +49,34 @@ async def get_account_summary(ib: IB, account: str = None) -> dict:
     return result
 
 
-def display_positions(positions: list):
-    """显示持仓"""
+async def fetch_market_prices(ib: IB, positions: list) -> dict:
+    """获取持仓的实时市场价格"""
+    prices = {}
+    for pos in positions:
+        contract = pos.contract
+        # 使用 reqMktData 获取实时价格
+        ticker = ib.reqMarketData(contract, genericTickList="", regulatorySnapshot=False)
+        # 等待价格更新
+        await asyncio.sleep(0.5)
+        if ticker and ticker.marketPrice:
+            prices[contract.conId] = ticker.marketPrice
+        else:
+            prices[contract.conId] = None
+    return prices
+
+
+async def display_positions_with_prices(ib: IB, positions: list):
+    """显示持仓（带实时价格）"""
     if not positions:
         console.print("[yellow]没有持仓[/yellow]")
         return
 
-    table = Table(title="持仓 Position")
+    # 获取实时价格
+    prices = await fetch_market_prices(ib, positions)
+
+    table = Table(title="持仓 Position (带实时价格)")
     table.add_column("标的", style="cyan")
-    table.add_column("合约ID", justify="right")
-    table.add_column("合约类型", justify="right")
+    table.add_column("类型", justify="right")
     table.add_column("数量", justify="right")
     table.add_column("平均成本", justify="right")
     table.add_column("当前价", justify="right")
@@ -70,17 +88,14 @@ def display_positions(positions: list):
         contract = pos.contract
         avg_cost = pos.avgCost or 0
         quantity = pos.position
-        print(contract)
-        # Position 对象没有 marketPrice，使用 avgCost 和 position 估算
-        # 如果有 marketValue，可以用它来计算当前价
-        market_value = getattr(pos, 'marketValue', None)
-        if market_value and quantity:
-            market_price = market_value / quantity
-        else:
-            market_price = 0
+        con_id = contract.conId
+
+        # 获取实时价格
+        market_price = prices.get(con_id) if prices.get(con_id) else 0
 
         # 计算市值和盈亏
         if market_price and quantity and avg_cost:
+            market_value = market_price * quantity
             cost_basis = avg_cost * quantity
             unrealized_pnl = market_value - cost_basis
             pnl_percent = (unrealized_pnl / cost_basis * 100) if cost_basis else 0
@@ -94,10 +109,12 @@ def display_positions(positions: list):
         pnl_str = f"[{pnl_color}]{unrealized_pnl:,.2f}[/{pnl_color}]"
         pnl_pct_str = f"[{pnl_color}]{pnl_percent:,.2f}%[/{pnl_color}]" if pnl_percent else "-"
 
+        # 合约类型简称
+        sec_type = contract.secType if hasattr(contract, 'secType') else "STK"
+
         table.add_row(
             contract.symbol,
-            str(contract.conId) if contract.conId else "-",
-            contract.secType if contract.conId else "-",
+            sec_type,
             str(quantity),
             f"{avg_cost:.2f}" if avg_cost else "-",
             f"{market_price:.2f}" if market_price else "-",
@@ -127,9 +144,10 @@ def display_portfolio(portfolio: list):
         contract = item.contract
         quantity = item.position or 0
         avg_cost = item.avgCost or 0
-        market_price = item.marketValue / quantity if quantity and item.marketValue else 0
 
         market_value = item.marketValue or 0
+        market_price = market_value / quantity if quantity and market_value else 0
+
         unrealized_pnl = item.unrealizedPNL or 0
 
         pnl_color = "green" if unrealized_pnl >= 0 else "red"
@@ -158,17 +176,24 @@ def display_account_summary(summary: dict):
     table.add_column("值", justify="right", style="green")
 
     key_names = {
-        "NetLiquidation": "净资产",
-        "TotalCashValue": "现金价值",
-        "BuyingPower": "购买力",
-        "ExcessLiquidity": "超额流动性",
-        "Cushion": "缓冲",
-        "InitMarginReq": "初始保证金",
-        "MaintMarginReq": "维持保证金",
-        "UnrealizedPnL": "未实现盈亏",
-        "RealizedPnL": "已实现盈亏",
-        "DividendBalance": "股息余额",
-        "AccruedCash": "应计现金",
+        "NetLiquidation": "净资产 (NetLiquidation)",
+        "TotalCashValue": "现金价值 (TotalCashValue)",
+        "BuyingPower": "购买力 (BuyingPower)",
+        "ExcessLiquidity": "超额流动性 (ExcessLiquidity)",
+        "Cushion": "缓冲 (Cushion)",
+        "InitMarginReq": "初始保证金 (InitMarginReq)",
+        "MaintMarginReq": "维持保证金 (MaintMarginReq)",
+        "UnrealizedPnL": "未实现盈亏 (UnrealizedPnL)",
+        "RealizedPnL": "已实现盈亏 (RealizedPnL)",
+        "DividendBalance": "股息余额 (DividendBalance)",
+        "AccruedCash": "应计现金 (AccruedCash)",
+        "AvailableFunds": "可用资金 (AvailableFunds)",
+        "FullInitMarginReq": "完整初始保证金 (FullInitMarginReq)",
+        "FullMaintMarginReq": "完整维持保证金 (FullMaintMarginReq)",
+        "GrossPositionValue": "持仓总值 (GrossPositionValue)",
+        "NetOptionValue": "期权净值 (NetOptionValue)",
+        "Leverage": "杠杆率 (Leverage)",
+        "EquityWithLoanValue": "含贷款股权价值 (EquityWithLoanValue)",
     }
 
     for key, value in summary.items():
@@ -259,7 +284,7 @@ def main(
             if positions:
                 console.print("[bold]=== 持仓 ===[/bold]")
                 pos_list = await get_positions(ib, account_id)
-                display_positions(pos_list)
+                await display_positions_with_prices(ib, pos_list)
                 console.print()
 
             # 显示投资组合

@@ -1,0 +1,61 @@
+@startuml Wheel Strategy Detailed Flow
+!theme toy
+skinparam linetype ortho
+skinparam boxpadding 25
+
+title The Wheel 策略核心收益逻辑
+
+start
+
+:开始交易循环;
+
+partition "**Step 1: 卖出看跌期权 (CSP)**" {
+    :选择目标股票;
+    :计算可卖出合约数;
+    :以市价/限价卖出看跌期权;
+    :**收取权利金 (Premium)**;
+}
+
+note right
+  收益来源 #1
+  权利金 = 期权价格 × 合约乘数 × 合约数
+end note
+
+:等待期权到期;
+
+if (到期时股价 > 行权价?) then (是)
+    :期权到期作废;
+    note right: 获得全部权利金 #88CC88
+else (否)
+    :期权被行权;
+    :**以行权价买入股票**;
+    note right: 成为股票多头持仓
+endif
+
+partition "**Step 2: 卖出备兑看涨期权 (CC)**" {
+    :针对持有的股票;
+    :卖出看涨期权;
+    :**收取权利金 (Premium)**;
+}
+
+note right
+  收益来源 #2
+  必须先持有股票才能卖出 Covered Call
+end note
+
+:等待期权到期;
+
+if (到期时股价 < 行权价?) then (是)
+    :期权到期作废;
+    note right: 保留权利金 + 股票 #88CC88
+else (否)
+    :期权被行权;
+    :**以行权价卖出股票**;
+    note right: 获得 (行权价-成本价) + 权利金
+endif
+
+:回到 Step 1 继续循环;
+
+stop
+
+@enduml

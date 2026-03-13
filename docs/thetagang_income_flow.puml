@@ -1,0 +1,73 @@
+@startuml ThetaGang Net Income Flow
+!theme toy
+skinparam maxMessageSize 200
+skinparam linetype ortho
+skinparam boxpadding 20
+
+title ThetaGang 净收益获取流程图
+
+start
+
+:启动程序\n(dry-run 模式);
+
+:收集账户状态;
+note right: 获取现金、持仓、账户价值
+
+:检查市场环境;
+note right: VIX、交易所时间、监管规则
+
+:获取投资组合配置;
+note right: 目标股票配置及权重
+
+if (是否启用期权策略?) then (是)
+    :**阶段1: 卖出看跌期权 (Write Puts)**;
+    note right
+      决定卖出哪些股票对应的看跌期权
+      计算可卖出合约数量
+      收取权利金 (Premium)
+    end note
+
+    if (股票被行权?) then (是)
+        :**持有股票**;
+        :继续卖出看涨期权;
+    else (否)
+        :保留权利金;
+    endif
+
+else (否)
+    :仅执行股票再平衡;
+endif
+
+if (是否启用仓位管理?) then (是)
+    :**阶段2: 仓位滚动 (Rolling)**;
+    note right
+      检查到期期权
+      滚动到下一周期
+      继续收取权利金
+    end note
+
+    :**阶段3: 平仓 (Closing)**;
+    note right
+      获利了结
+      止损平仓
+    end note
+endif
+
+if (是否启用风控?) then (是)
+    :**阶段4: VIX 对冲**;
+    note right: 防止黑天鹅事件
+
+    :**阶段5: 现金管理**;
+    note right: 保持流动性
+endif
+
+:计算净收益;
+note right
+  1. 权利金收入
+  2. 股票价差收益
+  3. 已实现盈亏
+end note
+
+stop
+
+@enduml
