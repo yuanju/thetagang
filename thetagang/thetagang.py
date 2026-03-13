@@ -124,6 +124,7 @@ def start(
         # TWS version is pinned to current stable
         ibc_config = config.runtime.ibc
         ibc = IBC(1037, **ibc_config.to_dict())
+        print(ibc_config.to_dict())
         log.info(f"Starting TWS with twsVersion={ibc.twsVersion}")
 
         ib.RaiseRequestErrors = ibc_config.RaiseRequestErrors
@@ -133,6 +134,7 @@ def start(
         )
 
         async def run_with_watchdog() -> None:
+            print("run with watchdog")
             watchdog.start()
             try:
                 await completion_future

@@ -39,7 +39,6 @@ class OrderOperations:
 
     def get_algo_strategy(self) -> str:
         return self.config.runtime.orders.algo.strategy
-
     def algo_params_from(self, params: List[List[str]]) -> List[TagValue]:
         return [TagValue(p[0], p[1]) for p in params]
 
@@ -162,6 +161,7 @@ class OptionChainScanner:
             if c.exchange == underlying.exchange and c.tradingClass == underlying.symbol
         )
 
+        print(strike_limit)
         def valid_strike(strike: float) -> bool:
             if right.startswith("P") and strike_limit:
                 return strike <= strike_limit

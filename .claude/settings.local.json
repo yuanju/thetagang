@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(which uv || pip install alembic)"
+      "Bash(which uv || pip install alembic)",
+      "Bash(uv run thetagang --config thetagang.toml --without-ibc --dry-run 2>&1)"
     ]
   }
 }

@@ -147,6 +147,7 @@ class OptionsStrategyEngine:
             self.config.strategies.wheel.defaults.write_when.calculate_net_contracts
         )
 
+        print("11------")
         to_write: List[Tuple[str, str, int, int]] = []
         symbols = set(self.get_symbols())
         symbol_configs = resolve_symbol_configs(
@@ -383,6 +384,7 @@ class OptionsStrategyEngine:
     async def write_puts(
         self, puts: List[Tuple[str, str, int, Optional[float]]]
     ) -> None:
+        print("9-----")
         for symbol, primary_exchange, quantity, strike_limit in puts:
             try:
                 sell_ticker = await self.option_scanner.find_eligible_contracts(
@@ -422,6 +424,9 @@ class OptionsStrategyEngine:
         ]
 
         total_buying_power = self.get_buying_power(account_summary)
+        print("12------")
+        print(account_summary)
+        print(stock_positions)
 
         stock_symbols: Dict[str, PortfolioItem] = {}
         for stock in stock_positions:
@@ -437,6 +442,7 @@ class OptionsStrategyEngine:
             ):
                 position_values[symbol] = stock.marketValue
 
+        print(position_values)
         targets: Dict[str, float] = {}
         target_additional_quantity: Dict[str, Dict[str, int | bool]] = {}
         calculate_net_contracts = (
@@ -467,6 +473,7 @@ class OptionsStrategyEngine:
         symbol_configs = resolve_symbol_configs(
             self.config, context="options put write check"
         )
+        print("5-----")
 
         async def calculate_target_position_task(symbol: str) -> None:
             ticker = await self.ibkr.get_ticker_for_stock(
@@ -476,10 +483,13 @@ class OptionsStrategyEngine:
                 stock_symbols[symbol].position if symbol in stock_symbols else 0
             )
 
+            print("1------{ticker}")
+            print(ticker)
             targets[symbol] = round(
                 symbol_configs[symbol].weight * total_buying_power, 2
             )
             market_price = ticker.marketPrice()
+            print(market_price)
             if (
                 not market_price
                 or math.isnan(market_price)
@@ -629,6 +639,7 @@ class OptionsStrategyEngine:
                     )
             positions_summary_table.add_section()
 
+            print("2------")
             async def is_ok_to_write_puts(
                 symbol: str,
                 ticker: Ticker,
@@ -645,6 +656,7 @@ class OptionsStrategyEngine:
                 )
 
                 close_price = self.services.get_close_price(ticker)
+                print(close_price)
                 if not can_write_when_green and ticker.marketPrice() > close_price:
                     put_actions_table.add_row(
                         symbol,
@@ -674,6 +686,8 @@ class OptionsStrategyEngine:
                 return True
 
             ok_to_write = await is_ok_to_write_puts(symbol, ticker, net_target_puts)
+            print("3--------")
+            print(ok_to_write)
             target_additional_quantity[symbol] = {
                 "qty": net_target_puts,
                 "ok_to_write": ok_to_write,
@@ -691,6 +705,7 @@ class OptionsStrategyEngine:
         ) -> None:
             ok_to_write = target["ok_to_write"]
             additional_quantity = target["qty"]
+            print(target)
             if additional_quantity >= 1 and ok_to_write:
                 maximum_new_contracts = await self.get_maximum_new_contracts_for(
                     symbol,
@@ -735,6 +750,8 @@ class OptionsStrategyEngine:
             update_to_write_task(symbol, target)
             for symbol, target in target_additional_quantity.items()
         ]
+        print("4------")
+        print(tasks)
         await log.track_async(tasks, description="Generating positions summary...")
 
         return (positions_summary_table, put_actions_table, to_write)

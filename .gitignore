@@ -1,5 +1,9 @@
 .vscode/
 ibc.log
+
+thetagang.toml
+ibc-config.ini
+
 tws-installer.sh
 .idea/
 # local configuration
