@@ -1,0 +1,69 @@
+@startuml
+
+
+title Cash Management 现金管理流程图
+
+
+start
+if (cash_management 是否启用?) then (否)
+    stop
+endif
+
+:获取配置参数;
+note right
+* target_cash_balance 目标现金余额
+* buy_threshold 买入阈值
+* sell_threshold 卖出阈值
+* 计算总可用现金 = 当前现金 + 待处理现金
+end note
+
+
+if (总可用现金 < 目标+买入阈值 or 总可用现金 > 目标-卖出阈值) then (是)
+    stop
+    note left 
+情况	条件	操作
+现金过多	现金 > 目标 + buy_threshold	买入现金基金
+现金过少	现金 < 目标 - sell_threshold	卖出现金基金
+    end note
+endif
+
+
+:获取 ETF 行情;
+note right
+    symbol: 配置的现金基金 (如 SGOV, 510300)
+    primary_exchange: 主交易所
+    order_exchange: 订单交易所
+end note
+
+:计算交易金额;
+note right
+amount = 总现金 - 目标现金余额
+end note
+
+if (amount > 0?) then (是,多余现金)
+    :price = ticker.ask; 
+    :action = "BUY";
+else (否,缺现金)
+    :price = ticker.bid;
+    :action = "SELL";
+endif
+
+:计算买入或卖出数量;
+
+if (qty == NaN?) then (是)
+    stop
+endif
+
+:创建限价订单;
+note right
+    action: BUY 或 SELL
+    quantity: abs(qty)
+    limit_price: round(price, 2)
+    algo_strategy: 算法订单参数
+end note
+
+#LightGreen:加入订单队列;
+
+end
+
+@enduml

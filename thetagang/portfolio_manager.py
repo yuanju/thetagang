@@ -340,6 +340,7 @@ class PortfolioManager:
                     continue
 
             portfolio_positions = self.ibkr.portfolio(account=self.account_number)
+            # 这里的filtered_position是指被追踪的持仓
             filtered_positions, untracked_positions = self.partition_positions(
                 portfolio_positions
             )
@@ -375,6 +376,7 @@ class PortfolioManager:
                     )
                     and pos.position != 0
                 ]
+                # 从这里可以看出self.ibkr.portfolio中的数据可能是不全的，self.ibkr.refresh_positions中的数据是全的，参见: [[obsidian://open?vault=mine&file=ib.portfolio()%20vs%20ib.positions()]]
                 missing_positions = [
                     pos
                     for pos in tracked_positions
@@ -480,21 +482,27 @@ class PortfolioManager:
         table.add_column("Item")
         table.add_column("Value", justify="right")
         table.add_row(
-            "Net liquidation", dfmt(account_summary["NetLiquidation"].value, 0)
+            "NetLiquidation 净清算价值", dfmt(account_summary["NetLiquidation"].value, 0)
         )
+        # 账户在不违反保证金规则的情况下，可用于新交易或提取的备用购买力或现金数额
         table.add_row(
-            "Excess liquidity", dfmt(account_summary["ExcessLiquidity"].value, 0)
+            "ExcessLiquidity 超额流动性", dfmt(account_summary["ExcessLiquidity"].value, 0)
         )
-        table.add_row("Initial margin", dfmt(account_summary["InitMarginReq"].value, 0))
+        # 初始保证金要求， 它是指根据监管规定（如美国的T+1保证金规则），在建立一个新的杠杆头寸（例如融资买入股票或卖出裸期权）时，您首次必须存入的最低资金额度。这个额度通常是交易金额的一个特定百分比。
+        table.add_row("InitMarginReq 初始保证金要求", dfmt(account_summary["InitMarginReq"].value, 0))
+        # Full Maintenance Margin Requirement 的缩写，中文翻译为 全额维持保证金要求。
+        # 它是指根据Regulation T (T条例) 的标准计算出的维持保证金要求。T条例是美国联邦储备委员会制定的法规，规定了在普通经纪账户中融资交易的标准保证金比例（通常是50%）
         table.add_row(
-            "Maintenance margin", dfmt(account_summary["FullMaintMarginReq"].value, 0)
+            "FullMaintMarginReq 全额维持保证金要求", dfmt(account_summary["FullMaintMarginReq"].value, 0)
         )
-        table.add_row("Buying power", dfmt(account_summary["BuyingPower"].value, 0))
-        table.add_row("Total cash", dfmt(account_summary["TotalCashValue"].value, 0))
+        # 账户在不存入额外资金或不平仓现有头寸的情况下，能调动的“总弹药量”，
+        table.add_row("BuyingPower 购买力", dfmt(account_summary["BuyingPower"].value, 0))
+        table.add_row("TotalCashValue 总现金", dfmt(account_summary["TotalCashValue"].value, 0))
+        # 缓冲比率， Cushion 衡量的是您账户的超额流动性 (Excess Liquidity) 相对于您当前持仓总价值的占比
         table.add_row("Cushion", pfmt(account_summary["Cushion"].value, 0))
         table.add_section()
         table.add_row(
-            "Target buying power usage", dfmt(self.get_buying_power(account_summary), 0)
+            "Target buying power usage 目标购买力使用", dfmt(self.get_buying_power(account_summary), 0)
         )
         log.print(Panel(table))
 
@@ -514,46 +522,46 @@ class PortfolioManager:
 
         position_values: Dict[int, Dict[str, str]] = {}
 
-        async def is_itm(pos: PortfolioItem) -> str:
-            if isinstance(pos.contract, Option):
-                if pos.contract.right.startswith("C") and await self.call_is_itm(
-                    pos.contract
+        async def is_itm(portfolioItem: PortfolioItem) -> str:
+            if isinstance(portfolioItem.contract, Option):
+                if portfolioItem.contract.right.startswith("C") and await self.call_is_itm(
+                    portfolioItem.contract
                 ):
                     return "✔️"
-                if pos.contract.right.startswith("P") and await self.put_is_itm(
-                    pos.contract
+                if portfolioItem.contract.right.startswith("P") and await self.put_is_itm(
+                    portfolioItem.contract
                 ):
                     return "✔️"
             return ""
 
-        async def load_position_task(pos: PortfolioItem) -> None:
-            qty = pos.position
+        async def load_position_task(portfolioItem: PortfolioItem) -> None:
+            qty = portfolioItem.position
             if isinstance(qty, float):
                 qty_display = ifmt(int(qty)) if qty.is_integer() else ffmt(qty, 4)
             else:
                 qty_display = ifmt(int(qty))
-            position_values[pos.contract.conId] = {
+            position_values[portfolioItem.contract.conId] = {
                 "qty": qty_display,
-                "mktprice": dfmt(pos.marketPrice),
-                "avgprice": dfmt(pos.averageCost),
-                "value": dfmt(pos.marketValue, 0),
-                "cost": dfmt(pos.averageCost * pos.position, 0),
-                "unrealized": dfmt(pos.unrealizedPNL, 0),
-                "p&l": pfmt(position_pnl(pos), 1),
-                "itm?": await is_itm(pos),
+                "mktprice": dfmt(portfolioItem.marketPrice),
+                "avgprice": dfmt(portfolioItem.averageCost),
+                "value": dfmt(portfolioItem.marketValue, 0),
+                "cost": dfmt(portfolioItem.averageCost * portfolioItem.position, 0),
+                "unrealized": dfmt(portfolioItem.unrealizedPNL, 0),
+                "p&l": pfmt(position_pnl(portfolioItem), 1),
+                "itm?": await is_itm(portfolioItem),
             }
-            if isinstance(pos.contract, Option):
-                position_values[pos.contract.conId]["avgprice"] = dfmt(
-                    pos.averageCost / float(pos.contract.multiplier)
+            if isinstance(portfolioItem.contract, Option):
+                position_values[portfolioItem.contract.conId]["avgprice"] = dfmt(
+                    portfolioItem.averageCost / float(portfolioItem.contract.multiplier)
                 )
-                position_values[pos.contract.conId]["strike"] = dfmt(
-                    pos.contract.strike
+                position_values[portfolioItem.contract.conId]["strike"] = dfmt(
+                    portfolioItem.contract.strike
                 )
-                position_values[pos.contract.conId]["dte"] = str(
-                    option_dte(pos.contract.lastTradeDateOrContractMonth)
+                position_values[portfolioItem.contract.conId]["dte"] = str(
+                    option_dte(portfolioItem.contract.lastTradeDateOrContractMonth)
                 )
-                position_values[pos.contract.conId]["exp"] = str(
-                    pos.contract.lastTradeDateOrContractMonth
+                position_values[portfolioItem.contract.conId]["exp"] = str(
+                    portfolioItem.contract.lastTradeDateOrContractMonth
                 )
 
         tasks: List[Coroutine[Any, Any, None]] = []
@@ -666,7 +674,7 @@ class PortfolioManager:
             }
             close_stage_handled = False
             options_disabled_notice_logged = False
-            positions_might_be_stale = False
+            positions_might_be_stale = False # 持仓数据可能已过时
 
             write_stage_ids = {"options_write_puts", "options_write_calls"}
             management_stage_ids = {"options_roll_positions", "options_close_positions"}
@@ -834,6 +842,7 @@ class PortfolioManager:
     ) -> Tuple[List[Any], List[Any], Group]:
         return await self.options_engine.check_calls(portfolio_positions)
 
+    # 获取最大新合约数(受maximum_new_contracts_percent限制)
     async def get_maximum_new_contracts_for(
         self,
         symbol: str,
@@ -841,6 +850,8 @@ class PortfolioManager:
         account_summary: Dict[str, AccountValue],
     ) -> int:
         total_buying_power = self.get_buying_power(account_summary)
+        # 新合约最大购买力 = 账户总购买力 * maximum_new_contracts_percent(目前是5%)
+        # 这样做的好处是: 一次不要写超过这个数量的合约。这有助于通过随着时间的推移（可能还有到期）分散合约布局来避免聚集，以保护自己免受大幅波动的影响。
         max_buying_power = (
             self.config.strategies.wheel.defaults.target.maximum_new_contracts_percent
             * total_buying_power
@@ -1063,7 +1074,7 @@ class PortfolioManager:
         for contract, order, intent_id in self.orders.records():
             self.trades.submit_order(contract, order, intent_id=intent_id)
         self.trades.print_summary()
-    
+
     #在订单提交后，经过一段延迟，重新获取市场价格，缩窄买卖价差（tighten spread），提高成交概率。
     async def adjust_prices(self) -> None:
         if (
@@ -1185,7 +1196,8 @@ class PortfolioManager:
                         },
                     )
                 continue
-
+    # 计算卖出期权时的波动率阈值
+    # 优先基于sigma(波动率)进行计算阈值，如果 write_threshold_sigma 没有配置，就使用 write_threshold
     async def get_write_threshold(
         self, ticker: Ticker, right: str
     ) -> tuple[float, float]:
@@ -1198,10 +1210,23 @@ class PortfolioManager:
             right,
         )
         if threshold_sigma:
+            # 历史收益率的标准差 (Standard Deviation of Returns)，用于衡量价格的波动率
             hist_prices = await self.ibkr.request_historical_data(
                 ticker.contract,
                 self.config.strategies.wheel.defaults.constants.daily_stddev_window,
             )
+            # np.array 将一个Python列表转换为一维NumPy数组
+            # np.log 计算数组中每个元素的自然对数（以e为底）
+            #        在金融分析中，它常用于计算连续复利收益率（Log Returns），
+            #        因为连续复利收益率具有良好的数学性质
+            # np.diff 计算沿指定轴的第n阶离散差分
+            #         在金融中，np.diff 可以用来计算价格的绝对变化量，但更常用的是计算收益率
+            # np.std 计算数组元素的标准差。ddof=1表示样本差。
+            #        标准差是衡量数据分散程度的重要指标。
+            #        在金融领域，它是衡量资产价格或收益率波动率（Volatility）的核心指标，
+            #        波动率是评估风险的关键因素。
+            # np.exp 计算数组中每个元素的自然指数（e的幂次方）
+            #        exp 是 log 的逆运算。在金融中，如果你有对数收益率，可以用 exp 函数将其转换回价格比率
             log_prices = np.log(np.array([p.close for p in hist_prices]))
             stddev = np.std(np.diff(log_prices), ddof=1)
 

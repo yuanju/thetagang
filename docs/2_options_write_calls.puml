@@ -1,0 +1,84 @@
+@startuml 是否允许卖出CALL - 决策流程图
+
+hide circle
+skinparam linetype ortho
+skinparam componentStyle uml2
+skinparam nodesep 50
+skinparam ranksep 60
+
+
+start
+partition 计算每种标的可卖多少call{
+    :可卖数量;
+    note left
+    两种模式对比
+    | 模式 | 特点 | 风险 |
+    | write_excess_calls_only | 只卖多余股票 | 低风险，不会卖飞 |
+    | 普通模式 | 可卖部分持仓 | 可能会被行权 |
+    end note
+    :还需卖call的数量 = 可卖数量 - 净持仓数量;
+}
+
+partition 遍历标的集symbols{
+
+
+    if (卖call数 <= 0 或者 该symbol禁止交易) then (是)
+        stop
+    endif
+
+    if (is_sell_only_rebalancing(symbol)?) then (是只允许买模式)
+        stop
+    endif
+
+    if (上涨时允许卖 但 当前下跌了) then ( 是 )
+        stop
+    endif
+
+    if(当天是否股票上涨或下跌幅度太小) then ( 是，太小的话不卖)
+        stop
+    endif
+
+    if (持仓资产百分比 < write_calls_only_min_threshold_percent) then (是)
+       stop
+    endif
+
+    if (position_percent < min_threshold_percent?) then ( 是，持仓比例低于阈值，不可以卖call )
+        stop
+    endif
+
+    if(symbol_config.write_calls_only_min_threshold_percent) then ( 是 )
+        :最小百分比 = symbol_config.write_calls_only_min_threshold_percent;
+    else
+        :最小百分比 = self.config.strategies.wheel.defaults.write_when.calls.min_threshold_percent;
+    endif
+
+    if(最小百分比 且 标的资产百分比 < 最小百分比) then ( 是, 比如标的资产只占总资产的5%，量太小了，就不卖call了 )
+        stop
+    endif
+
+    if(symbol_config.write_calls_only_min_threshold_percent_relative) then ( 否 )
+        :最小相对百分比 = strategies.wheel.defaults.write_when.calls.min_threshold_percent_relative;
+    else ( 是 )
+        :最小相对百分比 = symbol_config.write_calls_only_min_threshold_percent_relative;
+    endif
+    if(最小相对百分比 且 当前资产超配率 < 最小相对百分比) then ( 是，当前标的股票超配率小于一定值时不卖call, 这点不是太理解 )
+        stop
+        note left
+Wheel 策略中卖出 Call 意味着愿意被行权卖出股票。
+
+如果当前持仓已经低于目标，再卖出 call 可能导致：
+
+卖飞 - 持有的股票被行权卖掉了
+踏空 - 后面股票涨上去但你已经没仓位了
+这个逻辑确保：
+
+只有当持仓"过剩"到一定程度时，才卖出 call 收权利金
+        end note
+    endif
+    ->否;
+
+    #LightGreen:生成卖call订单;
+}
+stop
+
+@enduml

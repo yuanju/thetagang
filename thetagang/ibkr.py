@@ -220,6 +220,7 @@ class IBKR:
         )
         return tickers
 
+    # 获取合约的实时行情数据 (Ticker)
     async def get_ticker_for_contract(
         self,
         contract: Contract,

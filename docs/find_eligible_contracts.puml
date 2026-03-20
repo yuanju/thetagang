@@ -1,0 +1,165 @@
+@startuml find_eligible_contracts - 查找符合条件的期权合约
+
+!theme plain
+hide circle
+skinparam linetype ortho
+skinparam componentStyle uml2
+skinparam nodesep 50
+skinparam ranksep 60
+
+|开始|
+start
+:查找符合条件的期权合约;
+
+|#FFF8E1|输入参数|
+note right
+    输入:
+    - underlying: 底层股票合约
+    - right: "P" 或 "C"
+    - strike_limit: 行权价限制
+    - minimum_price: 最低价格
+    - target_dte: 目标到期日
+    - target_delta: 目标Delta值
+end note
+
+:获取目标配置;
+note right
+    - contract_target_dte = target_dte 或配置值
+    - contract_target_delta = target_delta 或配置值
+    - contract_max_dte = 配置的最大DTE
+end note
+
+|#E1F5FE|获取市场数据|
+:获取底层股票价格;
+:获取期权链;
+
+|筛选行权价|
+:valid_strike(strike) 检查;
+note right
+    Put: strike <= strike_limit
+         或 strike <= price * 1.05
+    Call: strike >= strike_limit
+         或 strike >= price * 0.95
+end note
+
+:过滤后的行权价列表;
+
+|筛选到期日|
+:过滤到期日;
+note right
+    - DTE >= contract_target_dte
+    - DTE >= min_dte
+    - DTE <= contract_max_dte
+    - 取前 chain_expirations 个
+end note
+
+if (找到有效到期日?) then (否)
+    :抛出 NoValidContractsError;
+    stop
+endif
+
+|筛选行权价范围|
+:取最近的N个行权价;
+note right
+    nearest_strikes: 配置的 strike 数量
+    Put: 取最高的N个
+    Call: 取最低的N个
+end note
+
+if (找到有效行权价?) then (否)
+    :抛出 NoValidContractsError;
+    stop
+endif
+
+|生成合约|
+:生成候选期权合约列表;
+:qualify_contracts 验证合约;
+note right
+    生成所有到期日×行权价的组合
+end note
+
+|排除指定合约|
+if (exclude_exp_strike 配置?) then (是)
+    :排除指定合约;
+    note right
+        排除正在Roll的旧合约
+    end note
+endif
+
+|#FFF8E1|获取行情数据|
+:获取合约的ticker数据;
+note right
+    - market_price
+    - greeks (delta)
+    - open_interest
+    - midpoint
+end note
+
+|#FFEBEE|价格过滤|
+:price_is_valid(ticker) 检查;
+note right
+    1. 价格 > minimum_price
+    2. Call时: strike <= market_price + underlying_price
+end note
+
+if (有有效价格?) then (否)
+    :无符合条件合约;
+    stop
+endif
+
+|#F3E5F5|Delta过滤|
+:delta_is_valid(ticker) 检查;
+note right
+    - delta 存在且非 NaN
+    - |delta| <= contract_target_delta
+end note
+
+|备选方案|
+if (有符合Delta的合约?) then (否)
+    :尝试 fallback;
+    note right
+        如果 minimum_price > 0
+        则使用被拒绝的合约
+    end note
+
+    if (fallback后仍无合约?) then (是)
+        :抛出 NoValidContractsError;
+        stop
+    endif
+endif
+
+|#E0F2F1|持仓量过滤|
+:open_interest_is_valid 检查;
+note right
+    - putOpenInterest >= minimum_open_interest
+    - callOpenInterest >= minimum_open_interest
+end note
+
+|排序选择|
+:按Delta和DTE排序;
+note right
+    1. 按 |delta| 降序 (优先选高delta)
+    2. 按 DTE 升序 (优先选近到期)
+end note
+
+|最终选择|
+if (fallback_minimum_price 配置?) then (是)
+    :尝试找高于fallback价格的合约;
+    note right
+        选择第一个满足条件的
+    end note
+endif
+
+if (未选择?) then (是)
+    :选择第一个(最优)合约;
+endif
+
+|结果|
+:返回选中的Ticker;
+note right
+    返回: strike, dte, price
+end note
+
+stop
+
+@enduml

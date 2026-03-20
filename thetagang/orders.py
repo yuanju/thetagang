@@ -26,7 +26,7 @@ class Orders:
             return
 
         table = Table(
-            title="Order Summary", show_lines=True, box=box.MINIMAL_HEAVY_HEAD
+            title="Order Summary"
         )
         table.add_column("Symbol")
         table.add_column("Exchange")

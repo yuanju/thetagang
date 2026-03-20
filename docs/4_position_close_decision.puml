@@ -1,0 +1,48 @@
+@startuml position_can_be_closed - 仓位是否可以平仓
+
+' !theme plain
+hide circle
+skinparam linetype ortho
+skinparam componentStyle uml2
+skinparam nodesep 50
+skinparam ranksep 60
+
+title 仓位是否可以平仓
+
+start
+' note right
+'     输入:
+'     - position (PortfolioItem)
+'     - table (用于记录结果)
+' end note
+partition 循环Protfolio{
+    if (该symbol禁止交易) then ( 是 )
+        #LightPink:不允许平仓;      
+        stop
+    endif
+    note right
+        配置: roll_when.close_at_pnl
+        例如: 0.50 表示收益超过50%时平仓
+        当前没有配置
+    end note
+    if (close_at_pnl 配置存在?) then (否)
+        #LightPink:不允许平仓;        
+        stop
+    else ( 是 )
+        if (当前P&L 大于 close_at_pnl阈值) then (是)
+            #LightGreen:可以平仓;
+            note left
+                收益超过配置的阈值
+                可以主动平仓获利
+            end note
+            stop
+        else (否)
+            #LightPink:不允许平仓; 
+            stop
+        endif
+    endif
+
+
+}
+
+@enduml

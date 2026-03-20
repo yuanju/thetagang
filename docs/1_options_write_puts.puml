@@ -1,0 +1,65 @@
+@startuml 是否允许卖出PUT - 决策流程图
+
+title 是否需要卖出PUT
+
+start
+
+:计算每种标的可卖多少put;
+note right
+    目标仓位 = (total_buying_power * symbol.weight)/symbol.market_price
+    最终还可卖多少put = (目标仓位 - 当前股票持仓 - 当前已卖多少put*100)/100
+end note
+
+partition 遍历标的集symbols{
+
+    if (可卖put数 <= 0 或者 该symbol禁止交易) then ( 是 )
+        stop
+    endif
+
+    ' todo 什么情况下会设置只允许买模式
+    if (is_buy_only_rebalancing(symbol)?) then ( 是只允许买模式 )
+        stop
+    endif
+
+
+    ' :获取 can_write_when 配置;
+
+    ' :获取收盘价 close_price;
+    ' :获取当前市价 market_price;
+
+    ' if (股票上涨时不允许卖，但当前上涨了) then ( 是 )
+    '     stop
+    ' endif
+    ' note
+    ' end note
+
+    if (下跌时允许卖 但 当前上涨了) then ( 是 )
+        stop
+    endif
+
+
+
+    ' :计算 write_threshold;
+    ' note right
+    '     - 基于sigma: close_price * (exp(stddev) - 1) * threshold_sigma
+    '     - 基于百分比: threshold_perc * close_price
+    ' end note
+
+    ' :计算 absolute_daily_change;
+    ' note right
+    '     = |market_price - close_price|
+    ' end note
+
+    ' if (absolute_daily_change < write_threshold?) then ( 是，波动太小, 不允许卖put )
+    '     stop
+    ' endif
+
+    if(当天是否股票上涨或下跌幅度太小) then ( 是，太小的话不卖)
+        stop
+    endif
+
+    #LightGreen:允许卖出;
+}
+end
+
+@enduml

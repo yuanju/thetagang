@@ -1,0 +1,71 @@
+@startuml
+title check_buy_only_positions 流程图
+
+start
+
+if (config.equity_rebalance没配置(没配置默认关闭)) then ( 是 )
+  stop
+endif
+
+partition 遍历每个symbol {
+    :获取股票 ticker;
+    :获取当前持仓数量;
+    :计算目标价值 = weight × 购买力;
+    :计算目标股数 = floor(目标价值 / 市价);
+    :计算需要买入股数 = 目标股数 - 当前股数;
+}
+
+:获取再平衡策略配置;
+
+if (min_percent_relative 检查) then (不通过)
+  :跳过 (低于相对阈值);
+  note right: 当前市值与目标差距 < min_percent_relative
+endif
+
+:处理首次买入逻辑;
+note right: 如果当前无持仓但有目标价值，且满足最小买入条件，则买入1股
+
+if (需要买入股数 > 0?) then (是)
+  :检查订单金额是否满足 min_amount;
+
+  if (订单金额 < min_amount?) then (是)
+    :检查是否可买入1股;
+    if (可买入1股?) then (是)
+      :设置买入1股;
+    else
+      :跳过 (金额不足);
+      stop
+    endif
+  endif
+
+  :检查买入股数是否满足 min_shares;
+
+  if (股数 < min_shares?) then (是)
+    :跳过 (低于最小股数);
+    stop
+  endif
+
+  :检查购买力是否足够;
+
+  if (成本 > 可用购买力?) then (是)
+    :计算最大可买股数;
+
+    if (最大股数 < min_shares?) then (是)
+      :跳过 (购买力不足);
+      stop
+    endif
+  endif
+
+  :添加买入操作到列表;
+  :记录 "Buy X shares";
+
+else if (需要买入股数 <= 0 且 当前无持仓?) then (是)
+  :跳过 (已达到或超过目标);
+else
+  :跳过 (已达到或超过目标);
+endif
+
+:返回买入操作表格和列表;
+
+stop
+@enduml

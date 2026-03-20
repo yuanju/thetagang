@@ -120,8 +120,8 @@ class OptionsStrategyEngine:
         abs_diff = current_weight - target_weight
         rel_diff = (abs_diff / target_weight) if target_weight > 0 else 0
 
-        weight_info = f"Weight: {current_weight:.1%} (target: {target_weight:.1%})"
-        diff_info = f"Diff: {abs_diff:+.1%} (rel: {rel_diff:+.1%})"
+        weight_info = f"当前权重: {current_weight:.1%} (目标权重: {target_weight:.1%})"
+        diff_info = f"绝对差额: {abs_diff:+.1%} (相对差额: {rel_diff:+.1%})"
 
         if abs(rel_diff) < 0.1:
             color = "[green]"
@@ -147,7 +147,6 @@ class OptionsStrategyEngine:
             self.config.strategies.wheel.defaults.write_when.calculate_net_contracts
         )
 
-        print("11------")
         to_write: List[Tuple[str, str, int, int]] = []
         symbols = set(self.get_symbols())
         symbol_configs = resolve_symbol_configs(
@@ -158,11 +157,14 @@ class OptionsStrategyEngine:
             if symbol not in symbols:
                 return
 
+            # 净卖call仓位
             short_call_count = (
                 calculate_net_short_positions(portfolio_positions[symbol], "C")
                 if calculate_net_contracts
                 else count_short_option_positions(portfolio_positions[symbol], "C")
             )
+
+            # 标的股票仓位
             stock_count = math.floor(
                 sum(
                     [
@@ -172,6 +174,8 @@ class OptionsStrategyEngine:
                     ]
                 )
             )
+
+            # 限价 = max([配置限价] + [平均成本,...]) python中列表相加操作即列表合并
             strike_limit = math.ceil(
                 max(
                     [self.config.get_strike_limit(symbol, "C") or 0]
@@ -183,16 +187,22 @@ class OptionsStrategyEngine:
                 )
             )
 
+            # 当前标的的目标售卖股票数量
+            # self.target_quantities这个值是在check_if_can_write_puts中的calculate_target_position_task函数中算出来的
             target_quantity = self.target_quantities.get(symbol)
             if target_quantity is None:
                 log.warning(
                     f"{symbol}: Missing target share quantity before call-write planning; defaulting to current stock count."
                 )
                 target_quantity = stock_count
+
+            # 当前标的可卖call的数量
             target_short_calls = get_target_calls(
                 self.config, symbol, stock_count, target_quantity
             )
+            # 还需购买call的数量 = 可卖数量 - 净持仓数量
             new_contracts_needed = target_short_calls - short_call_count
+            # 当前超卖的call数量
             excess_calls = short_call_count - target_short_calls
 
             if excess_calls > 0:
@@ -204,11 +214,14 @@ class OptionsStrategyEngine:
                     f" short_call_count={short_call_count}, target_short_calls={target_short_calls}",
                 )
 
+            # 获取最大新合约数(受maximum_new_contracts_percent限制)
             maximum_new_contracts = await self.get_maximum_new_contracts_for(
                 symbol,
                 self.get_primary_exchange(symbol),
                 account_summary,
             )
+
+            # 真实需要卖的合约数
             calls_to_write = max(
                 [0, min([new_contracts_needed, maximum_new_contracts])]
             )
@@ -260,6 +273,7 @@ class OptionsStrategyEngine:
                     write_threshold,
                     absolute_daily_change,
                 ) = await self.get_write_threshold(ticker, "C")
+                # 当日波动率没达到阈值
                 if absolute_daily_change < write_threshold:
                     call_actions_table.add_row(
                         symbol,
@@ -322,6 +336,7 @@ class OptionsStrategyEngine:
             ok_to_write = await is_ok_to_write_calls(
                 symbol, ticker, calls_to_write, stock_count
             )
+            # 哪个高取哪个
             strike_limit = math.ceil(max([strike_limit, ticker.marketPrice()]))
 
             if calls_to_write > 0 and ok_to_write:
@@ -384,7 +399,6 @@ class OptionsStrategyEngine:
     async def write_puts(
         self, puts: List[Tuple[str, str, int, Optional[float]]]
     ) -> None:
-        print("9-----")
         for symbol, primary_exchange, quantity, strike_limit in puts:
             try:
                 sell_ticker = await self.option_scanner.find_eligible_contracts(
@@ -424,15 +438,14 @@ class OptionsStrategyEngine:
         ]
 
         total_buying_power = self.get_buying_power(account_summary)
-        print("12------")
-        print(account_summary)
-        print(stock_positions)
 
+        # 计算没只股票的仓位
         stock_symbols: Dict[str, PortfolioItem] = {}
         for stock in stock_positions:
             symbol = stock.contract.symbol
             stock_symbols[symbol] = stock
 
+        # 每支股票的市场价
         position_values: Dict[str, float] = {}
         for stock in stock_positions:
             symbol = stock.contract.symbol
@@ -442,14 +455,13 @@ class OptionsStrategyEngine:
             ):
                 position_values[symbol] = stock.marketValue
 
-        print(position_values)
         targets: Dict[str, float] = {}
         target_additional_quantity: Dict[str, Dict[str, int | bool]] = {}
         calculate_net_contracts = (
             self.config.strategies.wheel.defaults.write_when.calculate_net_contracts
         )
 
-        positions_summary_table = Table(title="Positions summary", show_edge=False)
+        positions_summary_table = Table(title="Positions summary", show_edge=True)
         positions_summary_table.add_column("Symbol")
         positions_summary_table.add_column("Shares 股票仓位", justify="right")
         positions_summary_table.add_column("Short puts 卖出看跌期权", justify="right")
@@ -462,10 +474,10 @@ class OptionsStrategyEngine:
             positions_summary_table.add_column("Net short calls 净卖出看涨期权", justify="right")
         positions_summary_table.add_column("Target value 目标价值", justify="right")
         positions_summary_table.add_column("Target share qty 目标股份数量", justify="right")
-        positions_summary_table.add_column("Net target shares 净目标股份数 / 合成股份数", justify="right")
+        positions_summary_table.add_column("Net target shares 净目标股份数", justify="right")
         positions_summary_table.add_column("Net target contracts 净目标合约数", justify="right")
 
-        put_actions_table = Table(title="Put writing summary")
+        put_actions_table = Table(title="Put writing summary", show_lines=True)
         put_actions_table.add_column("Symbol")
         put_actions_table.add_column("Action")
         put_actions_table.add_column("Detail")
@@ -473,23 +485,24 @@ class OptionsStrategyEngine:
         symbol_configs = resolve_symbol_configs(
             self.config, context="options put write check"
         )
-        print("5-----")
 
+        # 计算目标仓位
         async def calculate_target_position_task(symbol: str) -> None:
             ticker = await self.ibkr.get_ticker_for_stock(
                 symbol, self.get_primary_exchange(symbol)
             )
+            # 配置中的标的的当前股票仓位
             current_position = math.floor(
                 stock_symbols[symbol].position if symbol in stock_symbols else 0
             )
 
-            print("1------{ticker}")
-            print(ticker)
+            # 当前标的的目标预算
             targets[symbol] = round(
                 symbol_configs[symbol].weight * total_buying_power, 2
             )
+            # 当前标的的市场价
             market_price = ticker.marketPrice()
-            print(market_price)
+
             if (
                 not market_price
                 or math.isnan(market_price)
@@ -499,41 +512,52 @@ class OptionsStrategyEngine:
                     f"Invalid market price for {symbol} (market_price={market_price}), skipping for now"
                 )
                 return
-
+            # 当前标的的目标售卖数量
             self.target_quantities[symbol] = math.floor(targets[symbol] / market_price)
             if symbol not in position_values:
                 position_values[symbol] = current_position * market_price
 
+            # 当前标的是否已有持仓
             if symbol in portfolio_positions:
+                # 卖出看跌持仓
                 net_short_put_count = short_put_count = count_short_option_positions(
                     portfolio_positions[symbol], "P"
                 )
+                # 卖出看跌平均持仓价
                 short_put_avg_strike = weighted_avg_short_strike(
                     portfolio_positions[symbol], "P"
                 )
+                # 买入看跌的持仓
                 long_put_count = count_long_option_positions(
                     portfolio_positions[symbol], "P"
                 )
+                # 买入看跌的平均持仓价
                 long_put_avg_strike = weighted_avg_long_strike(
                     portfolio_positions[symbol], "P"
                 )
+                # 净卖出看涨仓位
                 net_short_call_count = short_call_count = count_short_option_positions(
                     portfolio_positions[symbol], "C"
                 )
+                # 卖出看涨平均持仓价
                 short_call_avg_strike = weighted_avg_short_strike(
                     portfolio_positions[symbol], "C"
                 )
+                # 买入看涨仓位
                 long_call_count = count_long_option_positions(
                     portfolio_positions[symbol], "C"
                 )
+                # 买入看涨平均持仓价
                 long_call_avg_strike = weighted_avg_long_strike(
                     portfolio_positions[symbol], "C"
                 )
 
                 if calculate_net_contracts:
+                    # 净卖出看跌仓位
                     net_short_put_count = calculate_net_short_positions(
                         portfolio_positions[symbol], "P"
                     )
+                    # 净卖出看涨仓位
                     net_short_call_count = calculate_net_short_positions(
                         portfolio_positions[symbol], "C"
                     )
@@ -543,6 +567,7 @@ class OptionsStrategyEngine:
                 net_short_call_count = short_call_count = long_call_count = 0
                 short_call_avg_strike = long_call_avg_strike = None
 
+            # 当前 equity_rebalance 没有配置，没配置默认是关闭的
             if self.config.is_buy_only_rebalancing(symbol):
                 qty_to_write = 0
                 net_target_shares = self.target_quantities[symbol] - current_position
@@ -551,9 +576,11 @@ class OptionsStrategyEngine:
                 qty_to_write = math.floor(
                     self.target_quantities[symbol]
                     - current_position
-                    - 100 * net_short_put_count
+                    - 100 * net_short_put_count # 卖出put，将来可能会被行权买入的，所以这里这净卖出的put也给算进去
                 )
+                # 净还可买入的股票数
                 net_target_shares = qty_to_write
+                # 净还可卖出的put数
                 net_target_puts = net_target_shares // 100
 
             if calculate_net_contracts:
@@ -639,7 +666,7 @@ class OptionsStrategyEngine:
                     )
             positions_summary_table.add_section()
 
-            print("2------")
+
             async def is_ok_to_write_puts(
                 symbol: str,
                 ticker: Ticker,
@@ -656,7 +683,6 @@ class OptionsStrategyEngine:
                 )
 
                 close_price = self.services.get_close_price(ticker)
-                print(close_price)
                 if not can_write_when_green and ticker.marketPrice() > close_price:
                     put_actions_table.add_row(
                         symbol,
@@ -686,8 +712,6 @@ class OptionsStrategyEngine:
                 return True
 
             ok_to_write = await is_ok_to_write_puts(symbol, ticker, net_target_puts)
-            print("3--------")
-            print(ok_to_write)
             target_additional_quantity[symbol] = {
                 "qty": net_target_puts,
                 "ok_to_write": ok_to_write,
@@ -705,7 +729,6 @@ class OptionsStrategyEngine:
         ) -> None:
             ok_to_write = target["ok_to_write"]
             additional_quantity = target["qty"]
-            print(target)
             if additional_quantity >= 1 and ok_to_write:
                 maximum_new_contracts = await self.get_maximum_new_contracts_for(
                     symbol,
@@ -750,12 +773,11 @@ class OptionsStrategyEngine:
             update_to_write_task(symbol, target)
             for symbol, target in target_additional_quantity.items()
         ]
-        print("4------")
-        print(tasks)
         await log.track_async(tasks, description="Generating positions summary...")
 
         return (positions_summary_table, put_actions_table, to_write)
 
+    # 获取卖出合约
     def get_short_contracts(
         self, portfolio_positions: Dict[str, List[PortfolioItem]], right: str
     ) -> List[PortfolioItem]:
@@ -769,6 +791,7 @@ class OptionsStrategyEngine:
     ) -> List[PortfolioItem]:
         return self.get_short_contracts(portfolio_positions, "C")
 
+    # 获取持仓中已卖出的put
     def get_short_puts(
         self, portfolio_positions: Dict[str, List[PortfolioItem]]
     ) -> List[PortfolioItem]:
@@ -812,7 +835,9 @@ class OptionsStrategyEngine:
     def call_can_be_closed(self, call: PortfolioItem, table: Table) -> bool:
         return self.position_can_be_closed(call, table)
 
+    # put期权是否可以被滚动
     async def put_can_be_rolled(self, put: PortfolioItem, table: Table) -> bool:
+        # put.position > 0 表示有多头仓位
         if put.position > 0:
             return False
         if not self.config.trading_is_allowed(put.contract.symbol):
@@ -825,6 +850,7 @@ class OptionsStrategyEngine:
             )
             return False
 
+        # 如果当前期权已是ITM 且 配置了有itm强制roll
         if (
             isinstance(put.contract, Option)
             and itm
@@ -837,6 +863,8 @@ class OptionsStrategyEngine:
             )
             return True
 
+        # 如果当前期权已是ITM 且 配置了itm时不允许roll
+        # todo 为什么有两条完全相反的配置？
         if (
             not self.config.strategies.wheel.defaults.roll_when.puts.itm
             and isinstance(put.contract, Option)
@@ -844,6 +872,7 @@ class OptionsStrategyEngine:
         ):
             return False
 
+        # 如果当前有excess put 且 配置了有超卖put时禁止roll
         if (
             put.contract.symbol in self.has_excess_puts
             and not self.config.strategies.wheel.defaults.roll_when.puts.has_excess
@@ -861,11 +890,14 @@ class OptionsStrategyEngine:
         roll_when_pnl = self.config.strategies.wheel.defaults.roll_when.pnl
         roll_when_min_pnl = self.config.strategies.wheel.defaults.roll_when.min_pnl
 
+        # 未接近到期日期，不需要提前roll
         if (
             self.config.strategies.wheel.defaults.roll_when.max_dte
             and dte > self.config.strategies.wheel.defaults.roll_when.max_dte
         ):
             return False
+
+        # 临近到期且有收益，且收益已达到一个最小值，因时就可以roll了
         if dte <= roll_when_dte:
             if pnl >= roll_when_min_pnl:
                 table.add_row(
@@ -880,6 +912,7 @@ class OptionsStrategyEngine:
                 f"[cyan1]Can't be rolled because P&L of {pfmt(pnl, 1)} is < {pfmt(roll_when_min_pnl, 1)}",
             )
 
+        # 收益已达标，也可以roll
         if pnl >= roll_when_pnl:
             if self.config.strategies.wheel.defaults.roll_when.max_dte is not None:
                 table.add_row(
@@ -897,11 +930,14 @@ class OptionsStrategyEngine:
 
         return False
 
+    # call期权是否可被滚动
     async def call_can_be_rolled(self, call: PortfolioItem, table: Table) -> bool:
         if call.position > 0:
             return False
         if not self.config.trading_is_allowed(call.contract.symbol):
             return False
+
+        # 当前期权已是ITM 且 配置了ITM期权总进行roll
         if (
             isinstance(call.contract, Option)
             and await self.call_is_itm(call.contract)
@@ -914,6 +950,7 @@ class OptionsStrategyEngine:
             )
             return True
 
+        # 当前期权已是ITM 且 配置了ITM期权不允许roll
         if (
             not self.config.strategies.wheel.defaults.roll_when.calls.itm
             and isinstance(call.contract, Option)
@@ -921,6 +958,7 @@ class OptionsStrategyEngine:
         ):
             return False
 
+        # 有超卖CALL 并且 配置的有超卖call的不允许roll
         if (
             call.contract.symbol in self.has_excess_calls
             and not self.config.strategies.wheel.defaults.roll_when.calls.has_excess
@@ -978,6 +1016,7 @@ class OptionsStrategyEngine:
     async def check_puts(
         self, portfolio_positions: Dict[str, List[PortfolioItem]]
     ) -> Tuple[List[Any], List[Any], Group]:
+        # 当前已卖出的put
         puts = self.get_short_puts(portfolio_positions)
         puts = [put for put in puts if put.contract.symbol != "VIX"]
         rollable_puts: List[PortfolioItem] = []

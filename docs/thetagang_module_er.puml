@@ -1,0 +1,153 @@
+@startuml ThetaGang Trading System - Module Architecture
+
+!theme plain
+hide circle
+skinparam linetype ortho
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
+skinparam nodesep 50
+skinparam ranksep 80
+skinparam rectangleBackgroundColor #F5F5F5
+skinparam rectangleBorderColor #9E9E9E
+
+package "Entry Point" #FFF3E0 {
+    [thetagang.py\n入口] as entry
+}
+
+package "Configuration" #E8F5E9 {
+    [config.py\n主配置] as config
+    [config_models.py\nPydantic模型] as config_models
+    [legacy_config.py\nv1兼容] as legacy_config
+}
+
+package "Core" #E1F5FE {
+    [portfolio_manager.py\n组合管理器] as portfolio_manager
+    [ibkr.py\nIBKR封装] as ibkr
+    [db.py\n数据库] as db
+}
+
+package "Database Models" #FCE4EC {
+    [Run] as run_model
+    [Event] as event_model
+    [AccountSnapshot\n账户快照] as account_snapshot
+    [PositionSnapshot\n持仓快照] as position_snapshot
+}
+
+package "Trading Operations" #FFF8E1 {
+    [orders.py\n订单执行] as orders
+    [trading_operations.py\n交易操作] as trading_ops
+    [options.py\n期权工具] as options
+}
+
+package "Strategies" #F3E5F5 {
+    [options_engine.py\n期权策略引擎] as options_engine
+    [equity_engine.py\n股票引擎] as equity_engine
+    [regime_engine.py\n制度引擎] as regime_engine
+    [post_engine.py\n后置引擎] as post_engine
+}
+
+package "Strategy Services" #E0F2F1 {
+    [runtime_services.py\n运行时服务] as runtime_services
+    [strategies/options.py\n期权服务] as options_strategy
+    [strategies/equity.py\n股票服务] as equity_strategy
+    [strategies/post.py\n后置服务] as post_strategy
+}
+
+package "Utilities" #ECEFF1 {
+    [util.py\n工具函数] as util
+    [trades.py\n交易记录] as trades
+    [exchange_hours.py\n交易所时间] as exchange_hours
+    [fmt.py\n格式化] as fmt
+    [log.py\n日志] as log
+}
+
+package "Config Migration" #FFEBEE {
+    [startup_migration.py\n启动迁移] as startup_migration
+    [migrate_v1_to_v2.py\nv1转v2] as migrate_v1_to_v2
+    [schema_detect.py\nSchema检测] as schema_detect
+}
+
+' ============================================
+' Relationships
+' ============================================
+
+' Entry -> Configuration (橙色)
+entry --> config #FF9800
+
+' Configuration 内部 (绿色)
+config ..> config_models #4CAF50
+config ..> legacy_config #4CAF50
+
+' Entry -> Core (橙色 -> 浅蓝)
+entry --> db #FF9800
+entry --> portfolio_manager #FF9800
+entry --> exchange_hours #FF9800
+
+' Configuration -> Core (绿色 -> 浅蓝)
+config --> portfolio_manager #4CAF50
+
+' Core 内部 (浅蓝)
+portfolio_manager --> ibkr #03A9F4
+portfolio_manager --> db #03A9F4
+
+' Core -> Database Models (浅蓝 -> 粉色)
+db --> run_model #03A9F4
+db --> event_model #03A9F4
+db --> account_snapshot #03A9F4
+db --> position_snapshot #03A9F4
+
+' PortfolioManager -> Trading Operations (浅蓝 -> 黄色)
+portfolio_manager --> orders #03A9F4
+portfolio_manager --> trading_ops #03A9F4
+portfolio_manager --> options #03A9F4
+
+' PortfolioManager -> Strategies (浅蓝 -> 紫色)
+portfolio_manager --> options_engine #03A9F4
+portfolio_manager --> equity_engine #03A9F4
+portfolio_manager --> regime_engine #03A9F4
+portfolio_manager --> post_engine #03A9F4
+
+' Strategy Engines -> Strategy Services (紫色 -> 青色)
+options_engine --> options_strategy #9C27B0
+equity_engine --> equity_strategy #9C27B0
+post_engine --> post_strategy #9C27B0
+
+' Strategy Engines -> Trading Operations (紫色 -> 黄色)
+options_engine --> trading_ops #9C27B0
+options_engine --> orders #9C27B0
+equity_engine --> orders #9C27B0
+
+' Strategy Engines -> Runtime Services (紫色 -> 青色)
+options_engine --> runtime_services #9C27B0
+equity_engine --> runtime_services #9C27B0
+regime_engine --> runtime_services #9C27B0
+
+' Trading Operations -> IBKR (黄色 -> 浅蓝)
+trading_ops --> ibkr #FFC107
+orders --> ibkr #FFC107
+
+' Core -> Utilities (浅蓝 -> 灰色)
+portfolio_manager ..> util #03A9F4
+portfolio_manager ..> trades #03A9F4
+portfolio_manager ..> fmt #03A9F4
+portfolio_manager ..> log #03A9F4
+ibkr ..> util #03A9F4
+
+' Trading Operations -> Utilities (黄色 -> 灰色)
+trading_ops ..> util #FFC107
+orders ..> util #FFC107
+
+' Config Migration -> Config (红色 -> 绿色)
+startup_migration --> config #F44336
+
+' Config Migration 内部 (红色)
+migrate_v1_to_v2 --> legacy_config #F44336
+schema_detect --> config_models #F44336
+
+' Runtime Services -> Configuration (青色 -> 绿色)
+runtime_services --> config #009688
+
+' Runtime Services -> Core (青色 -> 浅蓝)
+runtime_services --> ibkr #009688
+
+@enduml

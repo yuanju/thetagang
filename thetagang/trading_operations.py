@@ -161,7 +161,6 @@ class OptionChainScanner:
             if c.exchange == underlying.exchange and c.tradingClass == underlying.symbol
         )
 
-        print(strike_limit)
         def valid_strike(strike: float) -> bool:
             if right.startswith("P") and strike_limit:
                 return strike <= strike_limit

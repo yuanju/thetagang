@@ -2,11 +2,18 @@
 """持仓查询脚本 - 查看当前账户持仓情况"""
 
 import asyncio
+from dataclasses import asdict
+from typing import Dict, List
 
 import click
-from ib_async import IB
+from ib_async import IB, util, PortfolioItem, Option, Stock
 from rich.console import Console
 from rich.table import Table
+
+from thetagang.fmt import ifmt, ffmt, dfmt, pfmt
+from thetagang.ibkr import IBKR
+from thetagang.options import option_dte
+from thetagang.util import position_pnl
 
 console = Console()
 
@@ -69,6 +76,7 @@ async def fetch_market_prices(ib: IB, positions: list) -> dict:
     for pos, contract in stock_contracts:
         ticker = ib.reqMktData(contract, genericTickList="", regulatorySnapshot=False)
         await asyncio.sleep(0.3)
+        print(ticker)
         price = None
         if ticker:
             if ticker.last:
@@ -76,41 +84,34 @@ async def fetch_market_prices(ib: IB, positions: list) -> dict:
             elif ticker.bid and ticker.ask and ticker.bid > 0:
                 price = (float(ticker.bid) + float(ticker.ask)) / 2
         prices[contract.conId] = price
-
+    print('=====')
     # 处理期权 - 需要更长时间获取数据
     for pos, contract in opt_contracts:
         # 期权需要获取期权链
-        ticker = ib.reqMktData(contract, genericTickList="100,101,104,105", regulatorySnapshot=False)
-        await asyncio.sleep(1.0)  # 期权需要更长等待时间
-        price = None
-        if ticker:
-            # 期权通常用 bid/ask 中间价
-            if ticker.bid and ticker.ask and float(ticker.bid) > 0:
-                price = (float(ticker.bid) + float(ticker.ask)) / 2
-            elif ticker.last:
-                price = float(ticker.last)
-            elif ticker.modelGreeks and ticker.modelGreeks.optPrice:
-                # 使用模型价格
-                price = float(ticker.modelGreeks.optPrice)
-        prices[contract.conId] = price
+        ib.reqMarketDataType(1)
+        ticker = ib.reqMktData(contract)
+        await asyncio.sleep(2)
+        print(pos)
+        current_price = None
+        if hasattr(ticker, 'last') and ticker.last and ticker.last != 0:
+            current_price = ticker.last
+        elif hasattr(ticker, 'modelGreeks') and ticker.modelGreeks and ticker.modelGreeks.optPrice:
+            current_price = ticker.modelGreeks.optPrice
+
+        prices[contract.conId] = current_price
 
     return prices
 
 
-async def display_positions_with_prices(positions: list, portfolio: list = None):
+async def display_positions_with_prices(ib: IB, positions: list):
     """显示持仓（带实时价格）"""
     if not positions:
         console.print("[yellow]没有持仓[/yellow]")
         return
 
-    # 构建 portfolio 映射（用于获取市值和盈亏数据）
-    # portfolio 数据更完整，包含 marketValue 和 unrealizedPNL
-    portfolio_map = {}
-    if portfolio:
-        for item in portfolio:
-            con_id = item.contract.conId
-            portfolio_map[con_id] = item
-
+    # 获取实时市场价格
+    prices = await fetch_market_prices(ib, positions)
+    print(prices)
     table = Table(title="持仓 Position (带实时价格)")
     table.add_column("标的", style="cyan")
     table.add_column("类型", justify="right")
@@ -129,37 +130,22 @@ async def display_positions_with_prices(positions: list, portfolio: list = None)
         # 获取合约乘数（期权默认100，股票为1）
         multiplier = float(getattr(contract, 'multiplier', None) or 1)
 
-        # 优先使用 portfolio 数据
-        pf_item = portfolio_map.get(con_id)
+        # 获取实时价格
+        market_price = float(prices.get(con_id) or 0)
 
-        if pf_item:
-            # 使用 portfolio 的完整数据
-            market_value = float(pf_item.marketValue or 0)
-            unrealized_pnl = float(pf_item.unrealizedPNL or 0)
-            avg_cost = float(pf_item.avgCost or 0)
+        # 从 position 获取成本
+        avg_cost = float(pos.avgCost or 0)
+        cost_per_share = avg_cost / multiplier if avg_cost else 0
 
-            # 计算当前价（每股）
-            if quantity and market_value:
-                market_price = market_value / quantity / multiplier
-            else:
-                market_price = 0
-
-            # 计算成本（每股）
-            if avg_cost:
-                cost_per_share = avg_cost / multiplier
-            else:
-                cost_per_share = 0
-
-            # 计算盈亏百分比
-            cost_basis = market_value - unrealized_pnl
+        # 使用实时价格计算市值和盈亏
+        if market_price and quantity and avg_cost:
+            market_value = market_price * quantity * multiplier
+            cost_basis = avg_cost * quantity
+            unrealized_pnl = market_value - cost_basis
             pnl_percent = (unrealized_pnl / cost_basis * 100) if cost_basis else 0
         else:
-            # 没有 portfolio 数据，尝试使用 position 数据
-            avg_cost = float(pos.avgCost or 0)
-            cost_per_share = avg_cost / multiplier if avg_cost else 0
             market_value = 0
             unrealized_pnl = 0
-            market_price = 0
             pnl_percent = 0
 
         # 格式化显示
@@ -202,35 +188,103 @@ def display_portfolio(portfolio: list):
         console.print("[yellow]投资组合为空[/yellow]")
         return
 
+    position_values: Dict[int, Dict[str, str]] = {}
+
+    def load_position_task(portfolioItem: PortfolioItem) -> None:
+        qty = portfolioItem.position
+        if isinstance(qty, float):
+            qty_display = ifmt(int(qty)) if qty.is_integer() else ffmt(qty, 4)
+        else:
+            qty_display = ifmt(int(qty))
+        position_values[portfolioItem.contract.conId] = {
+            "qty": qty_display,
+            "mktprice": dfmt(portfolioItem.marketPrice),
+            "avgprice": dfmt(portfolioItem.averageCost),
+            "value": dfmt(portfolioItem.marketValue, 0),
+            "cost": dfmt(portfolioItem.averageCost * portfolioItem.position, 0),
+            "unrealized": dfmt(portfolioItem.unrealizedPNL, 0),
+            "p&l": pfmt(position_pnl(portfolioItem), 1),
+        }
+        if isinstance(portfolioItem.contract, Option):
+            position_values[portfolioItem.contract.conId]["avgprice"] = dfmt(
+                portfolioItem.averageCost / float(portfolioItem.contract.multiplier)
+            )
+            position_values[portfolioItem.contract.conId]["strike"] = dfmt(
+                portfolioItem.contract.strike
+            )
+            position_values[portfolioItem.contract.conId]["dte"] = str(
+                option_dte(portfolioItem.contract.lastTradeDateOrContractMonth)
+            )
+            position_values[portfolioItem.contract.conId]["exp"] = str(
+                portfolioItem.contract.lastTradeDateOrContractMonth
+            )
+    for portfolioItem in portfolio:
+        load_position_task(portfolioItem)
+
     table = Table(title="投资组合 Portfolio")
-    table.add_column("标的", style="cyan")
-    table.add_column("数量", justify="right")
-    table.add_column("平均成本", justify="right")
-    table.add_column("当前价", justify="right")
-    table.add_column("市值", justify="right")
-    table.add_column("未实现盈亏", justify="right")
+    table.add_column("Symbol")
+    table.add_column("R")
+    table.add_column("Qty", justify="right")
+    table.add_column("MktPrice", justify="right")
+    table.add_column("AvgPrice", justify="right")
+    table.add_column("Value", justify="right")
+    table.add_column("Cost", justify="right")
+    table.add_column("Unrealized P&L", justify="right")
+    table.add_column("P&L", justify="right")
+    table.add_column("Strike", justify="right")
+    table.add_column("Exp", justify="right")
+    table.add_column("DTE", justify="right")
 
-    for item in portfolio:
-        contract = item.contract
-        quantity = item.position or 0
-        avg_cost = item.avgCost or 0
+    def getval(col: str, conId: int) -> str:
+        return position_values[conId][col]
 
-        market_value = item.marketValue or 0
-        market_price = market_value / quantity if quantity and market_value else 0
-
-        unrealized_pnl = item.unrealizedPNL or 0
-
-        pnl_color = "green" if unrealized_pnl >= 0 else "red"
-        pnl_str = f"[{pnl_color}]{unrealized_pnl:,.2f}[/{pnl_color}]" if unrealized_pnl else "-"
-
-        table.add_row(
-            contract.symbol if hasattr(contract, 'symbol') else str(contract),
-            str(quantity),
-            f"{avg_cost:.2f}" if avg_cost else "-",
-            f"{market_price:.2f}" if market_price else "-",
-            f"{market_value:,.2f}" if market_value else "-",
-            pnl_str,
+    def add_symbol_positions(symbol: str, positions: List[PortfolioItem]) -> None:
+        table.add_row(symbol)
+        sorted_positions = sorted(
+            positions,
+            key=lambda p: (
+                option_dte(p.contract.lastTradeDateOrContractMonth)
+                if isinstance(p.contract, Option)
+                else -1
+            ),  # Keep stonks on top
         )
+
+        for pos in sorted_positions:
+            conId = pos.contract.conId
+            if isinstance(pos.contract, Stock):
+                table.add_row(
+                    "",
+                    "S",
+                    getval("qty", conId),
+                    getval("mktprice", conId),
+                    getval("avgprice", conId),
+                    getval("value", conId),
+                    getval("cost", conId),
+                    getval("unrealized", conId),
+                    getval("p&l", conId),
+                )
+            elif isinstance(pos.contract, Option):
+                table.add_row(
+                    "",
+                    pos.contract.right,
+                    getval("qty", conId),
+                    getval("mktprice", conId),
+                    getval("avgprice", conId),
+                    getval("value", conId),
+                    getval("cost", conId),
+                    getval("unrealized", conId),
+                    getval("p&l", conId),
+                    getval("strike", conId),
+                    getval("exp", conId),
+                    getval("dte", conId),
+                )
+
+    first = True
+    for portfolioItem in portfolio:
+        if not first:
+            table.add_section()
+        first = False
+        add_symbol_positions(portfolioItem.contract.symbol, [portfolioItem])
 
     console.print(table)
 
@@ -345,24 +399,32 @@ def main(
 
             # 显示账户摘要
             if summary:
-                console.print("[bold]=== 账户摘要 ===[/bold]")
+                # console.print("[bold]=== 账户摘要 ===[/bold]")
                 account_summary = await get_account_summary(ib, account_id)
                 display_account_summary(account_summary)
                 console.print()
 
-            # 获取投资组合数据（用于补充市值和盈亏）
-            portfolio_items = await get_portfolio(ib, account_id) if (positions or portfolio) else []
 
-            # 显示持仓
-            if positions:
-                console.print("[bold]=== 持仓 ===[/bold]")
-                pos_list = await get_positions(ib, account_id)
-                await display_positions_with_prices(pos_list, portfolio_items)
-                console.print()
+            # ibkr = IBKR(ib, 60, 'SMART', None)
+            # 获取投资组合数据（用于补充市值和盈亏）
+            # portfolio_positions = ibkr.portfolio('U15981136')
+            # 关键：使用 reqPositionsAsync
+
+            await ib.reqAccountUpdatesAsync('U15981136')
+            positions = await ib.reqPositionsAsync()
+            # 关键：使用 await 等待数据更新
+            await asyncio.sleep(2) # 或者使用 app.waitOnUpdate() 的异步版本
+            portfolio_items = await get_portfolio(ib, 'U15981136')
+            # # 显示持仓
+            # if positions:
+            #     console.print("[bold]=== 持仓 ===[/bold]")
+            #     pos_list = await get_positions(ib, 'U15981136')
+            #     await display_positions_with_prices(ib, pos_list)
+            #     console.print()
 
             # 显示投资组合
-            if portfolio:
-                console.print("[bold]=== 投资组合 ===[/bold]")
+            if portfolio_items:
+                # console.print("[bold]=== 投资组合 ===[/bold]")
                 display_portfolio(portfolio_items)
 
             # 断开连接

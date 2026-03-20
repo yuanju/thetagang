@@ -31,14 +31,14 @@ def portfolio_positions_to_dict(
         d[symbol].append(p)
     return d
 
-
+# 仓位净收益
 def position_pnl(position: ib_async.objects.PortfolioItem) -> float:
     denominator = position.averageCost * position.position
     if denominator == 0:
         return 0.0
     return position.unrealizedPNL / abs(denominator)
 
-
+# 查询卖出期权的仓位
 def get_short_positions(
     positions: List[PortfolioItem], right: str
 ) -> List[PortfolioItem]:
@@ -50,7 +50,7 @@ def get_short_positions(
         and p.position < 0
     ]
 
-
+# 查询买入期权的持仓
 def get_long_positions(
     positions: List[PortfolioItem], right: str
 ) -> List[PortfolioItem]:
@@ -62,11 +62,12 @@ def get_long_positions(
         and p.position > 0
     ]
 
-
+# 计算卖出仓位
 def count_short_option_positions(positions: List[PortfolioItem], right: str) -> int:
     return math.floor(-sum([p.position for p in get_short_positions(positions, right)]))
 
 
+# 计算卖出平均持仓价
 def weighted_avg_short_strike(
     positions: List[PortfolioItem], right: str
 ) -> Optional[float]:
@@ -79,7 +80,7 @@ def weighted_avg_short_strike(
     if den > 0:
         return num / den
 
-
+# 买入期权的平均持仓价
 def weighted_avg_long_strike(
     positions: List[PortfolioItem], right: str
 ) -> Optional[float]:
@@ -92,11 +93,11 @@ def weighted_avg_long_strike(
     if den > 0:
         return num / den
 
-
+# 计算买入期权的持仓
 def count_long_option_positions(positions: List[PortfolioItem], right: str) -> int:
     return math.floor(sum([p.position for p in get_long_positions(positions, right)]))
 
-
+# 计算净卖出仓位
 def calculate_net_short_positions(positions: List[PortfolioItem], right: str) -> int:
     shorts: List[Tuple[int, float, float]] = [
         (
@@ -208,19 +209,43 @@ def midpoint_or_market_price(ticker: Ticker) -> float:
 
     return ticker.midpoint()
 
-
+# 计算可以卖出的 Call 合约数量
 def get_target_calls(
     config: Config, symbol: str, current_shares: int, target_shares: int
 ) -> int:
+    # 只卖出多余的股票对应的 Call
+    # 举例:
+    # 当前股数	目标股数	可卖 call
+    # 300	   100	     2 张
+    # 200	   100	     1 张
+    # 100	   100	     0 张
     if config.write_excess_calls_only(symbol):
         return max([0, (current_shares - target_shares) // 100])
     else:
-        cap_factor = config.get_cap_factor(symbol)
-        cap_target_floor = config.get_cap_target_floor(symbol)
-        min_uncovered = (target_shares * cap_target_floor) // 100
-        max_covered = (current_shares * cap_factor) // 100
-        total_coverable = current_shares // 100
+        # 例子 假设：
+
+        # 当前持有: 500 股
+        # 目标持有: 300 股
+        # cap_factor: 0.9 (90%)
+        # cap_target_floor: 0.8 (80%)
+
+        # min_uncovered = 300 × 0.8 ÷ 100 = 2 张 (240股)
+        # max_covered   = 500 × 0.9 ÷ 100 = 4 张 (400股)
+        # total_coverable = 500 ÷ 100 = 5 张
+
+        # 可卖 call = min(4, 5 - 2) = min(4, 3) = 3 张
+        cap_factor = config.get_cap_factor(symbol)                  # 覆盖率上限
+        cap_target_floor = config.get_cap_target_floor(symbol)      # 目标底限
+        min_uncovered = (target_shares * cap_target_floor) // 100   # 最小不覆盖
+        max_covered = (current_shares * cap_factor) // 100          # 最大可覆盖
+        total_coverable = current_shares // 100                     # 总可覆盖
         return max([0, math.floor(min([max_covered, total_coverable - min_uncovered]))])
+    # 两种模式对比
+    # 模式	                    特点	       风险
+    # write_excess_calls_only  只卖多余股票	    低风险，不会卖飞
+    # 普通模式	                 可卖部分持仓	  可能会被行权
+
+    # 普通模式允许保留一部分股票作为"安全垫"，即使被行权也不会卖光。
 
 
 def would_increase_spread(order: Order, updated_price: float) -> bool:

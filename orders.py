@@ -36,9 +36,17 @@ async def get_executions(ib: IB, days: int = 7) -> list:
     return fills
 
 
-def get_open_orders(ib: IB) -> list:
+async def get_open_orders(ib: IB) -> list:
     """获取当前挂单"""
-    return ib.reqAllOpenOrders()
+    return await ib.reqAllOpenOrdersAsync()
+
+async def get_complete_orders(ib: IB) -> list:
+    """获取所有完成订单"""
+    return await ib.reqCompletedOrdersAsync(apiOnly=False)
+
+async def get_trades(ib: IB) -> list:
+    """获取最近成交的订单（包括完成的和部分完成的）"""
+    return ib.trades()
 
 
 def display_executions(fills: list):
@@ -47,21 +55,28 @@ def display_executions(fills: list):
         console.print("[yellow]没有成交记录[/yellow]")
         return
 
-    table = Table(title=f"成交记录 Executions (共 {len(fills)} 条)")
+    # 按时间排序（最新的在前）
+    sorted_fills = sorted(fills, key=lambda f: f.execution.time or datetime.min, reverse=True)
+
+    table = Table(title=f"成交记录 Executions (共 {len(sorted_fills)} 条)")
     table.add_column("时间", style="cyan")
     table.add_column("标的", justify="right")
     table.add_column("类型", justify="right")
     table.add_column("方向", justify="right")
     table.add_column("数量", justify="right")
-    table.add_column("价格", justify="right")
     table.add_column("成交价", justify="right")
+    table.add_column("总金额", justify="right")
     table.add_column("佣金", justify="right")
     table.add_column("订单号", justify="right")
 
-    for fill in fills:
+    total_commission = 0
+    total_value = 0
+
+    for fill in sorted_fills:
         execution = fill.execution
         contract = fill.contract
         commission = fill.commissionReport.commission if fill.commissionReport else 0
+        total_commission += commission
 
         # 标的显示
         if hasattr(contract, 'symbol'):
@@ -74,28 +89,42 @@ def display_executions(fills: list):
                 symbol = f"{symbol} {right}${strike} {expiry}"
         else:
             symbol = str(contract)
+            sec_type = "STK"
 
         # 方向
         side = execution.side.upper() if execution.side else ''
-        action_color = "green" if side == "BUY" else "red"
+        action_color = "green" if side == "BOT" or side == "BUY" else "red"
         action = f"[{action_color}]{side}[/{action_color}]"
 
         # 时间格式化
-        exec_time = execution.time.strftime("%Y-%m-%d %H:%M") if execution.time else "-"
+        exec_time = execution.time.strftime("%m-%d %H:%M") if execution.time else "-"
+
+        # 价格
+        exec_price = execution.price if execution.price else 0
+
+        # 总金额 = 价格 × 数量
+        total_amount = exec_price * execution.shares if exec_price else 0
+        total_value += total_amount
 
         table.add_row(
             exec_time,
             symbol,
-            sec_type if 'sec_type' in locals() else "STK",
+            sec_type,
             action,
             str(execution.shares),
-            f"{execution.price:.2f}" if execution.price else "-",
-            f"{execution.avgSharePrice:.2f}" if execution.avgSharePrice else "-",
+            f"{exec_price:.2f}" if exec_price else "-",
+            f"{total_amount:,.2f}" if total_amount else "-",
             f"{commission:.2f}" if commission else "-",
             str(execution.orderId),
         )
 
     console.print(table)
+
+    # 显示统计信息
+    # console.print(f"\n[bold]统计:[/bold]")
+    # console.print(f"  总成交金额: ${total_value:,.2f}")
+    # console.print(f"  总佣金: ${total_commission:,.2f}")
+    # console.print(f"  净支出: ${total_value + total_commission:,.2f}")
 
 
 def display_orders(orders: list):
@@ -112,7 +141,6 @@ def display_orders(orders: list):
     table.add_column("数量", justify="right")
     table.add_column("价格", justify="right")
     table.add_column("状态", justify="right")
-    table.add_column("提交时间", justify="right")
 
     for order in orders:
         contract = order.contract
@@ -140,11 +168,8 @@ def display_orders(orders: list):
         order_type = order_info.orderType
 
         # 状态
-        status = order.orderState.status
+        status = order.orderStatus.status if order.orderStatus else "Unknown"
         status_color = "yellow" if status == "Submitted" else "green" if status == "Filled" else "white"
-
-        # 时间
-        submit_time = order_info.submittedTime.strftime("%Y-%m-%d %H:%M") if order_info.submittedTime else "-"
 
         table.add_row(
             str(order_info.orderId),
@@ -154,7 +179,71 @@ def display_orders(orders: list):
             str(order_info.totalQuantity),
             f"{order_info.lmtPrice:.2f}" if order_info.lmtPrice else "-",
             f"[{status_color}]{status}[/{status_color}]",
-            submit_time,
+        )
+
+    console.print(table)
+
+
+def display_trades(trades: list):
+    """显示最近成交的订单"""
+    if not trades:
+        console.print("[yellow]没有交易订单[/yellow]")
+        return
+
+    # 按时间排序（最新的在前）
+    sorted_trades = sorted(trades, key=lambda t: t.orderStatus.permId or 0, reverse=True)
+
+    table = Table(title=f"最近交易记录 Trades (共 {len(sorted_trades)} 条)")
+    table.add_column("订单号", justify="right")
+    table.add_column("标的", style="cyan")
+    table.add_column("方向", justify="right")
+    table.add_column("类型", justify="right")
+    table.add_column("证券类型", justify="right")
+    table.add_column("数量", justify="right")
+    table.add_column("均价", justify="right")
+    table.add_column("状态", justify="right")
+
+    for trade in sorted_trades:
+        contract = trade.contract
+        order_info = trade.order
+        # 标的显示
+        if hasattr(contract, 'symbol'):
+            symbol = contract.symbol
+            sec_type = getattr(contract, 'secType', 'STK')
+            if sec_type == 'OPT':
+                strike = getattr(contract, 'strike', '')
+                expiry = getattr(contract, 'lastTradeDateOrContractMonth', '')
+                right = getattr(contract, 'right', '')
+                symbol = f"{symbol} {right}${strike} {expiry}"
+            elif sec_type == 'STK':
+                symbol = f"{symbol}"
+        else:
+            symbol = str(contract)
+
+        # 方向
+        action = order_info.action.upper()
+        action_color = "green" if action == "BUY" else "red"
+        action_str = f"[{action_color}]{action}[/{action_color}]"
+
+        # 订单类型
+        order_type = order_info.orderType
+
+        # 状态
+        status = trade.orderStatus.status if trade.orderStatus else "Unknown"
+        status_color = "yellow" if status == "Submitted" else "green" if status == "Filled" else "white"
+
+        # 均价
+        avg_price = trade.orderStatus.avgFillPrice if trade.orderStatus else None
+
+        table.add_row(
+            str(order_info.orderId),
+            symbol,
+            action_str,
+            order_type,
+            sec_type,
+            str(order_info.totalQuantity if status == "Submitted" else order_info.filledQuantity),
+            f"{avg_price:.2f}" if avg_price else "-",
+            f"[{status_color}]{status}[/{status_color}]",
         )
 
     console.print(table)
@@ -189,12 +278,18 @@ def display_orders(orders: list):
     default=True,
     help="显示当前挂单 (default: True)",
 )
+@click.option(
+    "--trades/--no-trades",
+    default=True,
+    help="显示最近成交订单 (default: True)",
+)
 def main(
     client_id: int,
     port: int,
     days: int,
     executions: bool,
     orders: bool,
+    trades: bool,
 ):
     """
     订单查询脚本
@@ -214,16 +309,28 @@ def main(
 
             # 显示成交记录
             if executions:
-                console.print(f"[bold]=== 最近 {days} 天成交记录 ===[/bold]")
+                # console.print(f"[bold]=== 最近 {days} 天成交记录 ===[/bold]")
                 fills = await get_executions(ib, days)
                 display_executions(fills)
                 console.print()
 
-            # 显示当前挂单
-            if orders:
-                console.print("[bold]=== 当前挂单 ===[/bold]")
-                open_orders = get_open_orders(ib)
-                display_orders(open_orders)
+            # 显示最近成交订单
+            if trades:
+                # console.print("[bold]=== 最近成交订单 ===[/bold]")
+                recent_trades = await get_trades(ib)
+                display_trades(recent_trades)
+
+            # # 显示当前挂单
+            # if orders:
+            #     # console.print("[bold]=== 当前挂单 ===[/bold]")
+            #     open_orders = await get_open_orders(ib)
+            #     display_orders(open_orders)
+            #     complete_orders = await get_complete_orders(ib)
+            #     display_orders(complete_orders)
+            #     console.print()
+
+
+
 
             # 断开连接
             ib.disconnect()

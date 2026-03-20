@@ -1,0 +1,224 @@
+@startuml ThetaGang Trading System - Entity Relationship Diagram
+
+!theme plain
+hide circle
+skinparam linetype ortho
+skinparam componentStyle uml2
+
+' ============================================
+' ThetaGang Trading System - ER Diagram
+' Based on thetagang.toml configuration
+' ============================================
+
+entity "Account" as account {
+  * account_number : string
+  * margin_usage : float
+  * market_data_type : int
+  * cancel_orders : bool
+}
+
+entity "RuntimeConfig" as runtime {
+  * id : int
+  * api_response_wait_time : int
+  * minimum_credit : float
+  * expirations : int
+  * strikes : int
+}
+
+entity "RuntimeExchangeHours" as exchange_hours {
+  * id : int
+  * exchange : string
+  * action_when_closed : string
+  * max_wait_until_open : int
+  * delay_after_open : int
+  * delay_before_close : int
+}
+
+entity "RuntimeOrders" as orders {
+  * id : int
+  * exchange : string
+  * minimum_credit : float
+  * price_update_delay : string
+  * algo_strategy : string
+}
+
+entity "IBConfig" as ib_config {
+  * id : int
+  * gateway : bool
+  * ibc_path : string
+  * trading_mode : string
+  * userid : string
+  * password : string
+}
+
+entity "WatchdogConfig" as watchdog {
+  * id : int
+  * port : int
+  * host : string
+  * client_id : int
+  * readonly : bool
+}
+
+entity "WheelStrategy" as wheel_strategy {
+  * id : int
+  * enabled : bool
+}
+
+entity "WheelDefaults" as wheel_defaults {
+  * id : int
+  * dte : int
+  * max_dte : int
+  * delta : float
+  * maximum_new_contracts_percent : float
+  * minimum_open_interest : int
+}
+
+entity "WriteWhen" as write_when {
+  * id : int
+  * calculate_net_contracts : bool
+}
+
+entity "WriteWhenCalls" as write_when_calls {
+  * id : int
+  * green : bool
+  * red : bool
+  * cap_factor : float
+  * cap_target_floor : float
+  * excess_only : bool
+}
+
+entity "WriteWhenPuts" as write_when_puts {
+  * id : int
+  * green : bool
+  * red : bool
+}
+
+entity "RollWhen" as roll_when {
+  * id : int
+  * pnl : float
+  * dte : int
+  * min_pnl : float
+  * max_dte : int
+  * close_at_pnl : float
+  * close_if_unable_to_roll : bool
+}
+
+entity "RollWhenCalls" as roll_when_calls {
+  * id : int
+  * itm : bool
+  * always_when_itm : bool
+  * credit_only : bool
+  * has_excess : bool
+  * maintain_high_water_mark : bool
+}
+
+entity "RollWhenPuts" as roll_when_puts {
+  * id : int
+  * itm : bool
+  * always_when_itm : bool
+  * credit_only : bool
+  * has_excess : bool
+}
+
+entity "TargetDelta" as target_delta {
+  * id : int
+  * puts_delta : float
+  * calls_delta : float
+}
+
+entity "VIXHedge" as vix_hedge {
+  * id : int
+  * enabled : bool
+  * delta : float
+  * target_dte : int
+  * max_dte : int
+  * close_hedges_when_vix_exceeds : float
+  * ignore_dte : int
+}
+
+entity "VIXAllocation" as vix_allocation {
+  * id : int
+  * lower_bound : float
+  * upper_bound : float
+  * weight : float
+}
+
+entity "CashManagement" as cash_mgmt {
+  * id : int
+  * enabled : bool
+  * cash_fund : string
+  * target_cash_balance : float
+  * buy_threshold : float
+  * sell_threshold : float
+}
+
+entity "Portfolio" as portfolio {
+  * id : int
+}
+
+entity "Symbol" as symbol {
+  * id : int
+  * name : string
+  * weight : float
+  * parts : int
+  * dte : int
+  * max_dte : int
+  * delta : float
+  * primary_exchange : string
+  * adjust_price_after_delay : bool
+  * no_trading : bool
+  * close_if_unable_to_roll : bool
+}
+
+entity "SymbolPuts" as symbol_puts {
+  * id : int
+  * delta : float
+  * strike_limit : float
+  * write_threshold : float
+  * write_threshold_sigma : float
+  * green : bool
+  * red : bool
+}
+
+entity "SymbolCalls" as symbol_calls {
+  * id : int
+  * delta : float
+  * strike_limit : float
+  * cap_factor : float
+  * cap_target_floor : float
+  * excess_only : bool
+  * maintain_high_water_mark : bool
+}
+
+' ============================================
+' Relationships
+' ============================================
+
+account ||--|| runtime : "has"
+runtime ||--|| exchange_hours : "uses"
+runtime ||--|| orders : "uses"
+runtime ||--|| ib_config : "uses"
+runtime ||--|| watchdog : "monitors"
+
+wheel_strategy ||--|| wheel_defaults : "has"
+wheel_defaults ||--|| write_when : "controls"
+write_when ||--|| write_when_calls : "for calls"
+write_when ||--|| write_when_puts : "for puts"
+wheel_defaults ||--|| roll_when : "rolls when"
+roll_when ||--|| roll_when_calls : "for calls"
+roll_when ||--|| roll_when_puts : "for puts"
+wheel_defaults ||--|| target_delta : "target"
+
+wheel_strategy ||--|| portfolio : "manages"
+
+portfolio ||--|| symbol : "contains"
+
+symbol ||--|| symbol_puts : "puts config"
+symbol ||--|| symbol_calls : "calls config"
+
+vix_hedge ||--|| vix_allocation : "allocates"
+
+wheel_strategy ||--|| vix_hedge : "optional"
+wheel_strategy ||--|| cash_mgmt : "optional"
+
+@enduml

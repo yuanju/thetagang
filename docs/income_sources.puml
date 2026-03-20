@@ -1,5 +1,5 @@
 @startuml ThetaGang Income Sources
-!theme toy
+!theme plain
 skinparam linetype ortho
 
 title ThetaGang 净收益来源分解
@@ -30,9 +30,7 @@ rectangle "净收益 (Net Income)" as NI #98FB98 {
   }
 }
 
-NI --> PI
-NI --> CG
-NI --> OI
+
 
 note bottom of NI
   净收益 = Σ权利金 + Σ股票价差 + Σ已实现盈亏

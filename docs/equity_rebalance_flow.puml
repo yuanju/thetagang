@@ -1,0 +1,46 @@
+@startuml Equity Rebalance Flow
+!theme toy
+skinparam linetype ortho
+skinparam boxpadding 25
+
+title Equity Rebalance 策略流程
+
+start
+
+:接收 account_summary 和 portfolio_positions;
+
+if (equity_regime_rebalance 是否启用?) then (是)
+    :调用 regime_service.check_regime_rebalance_positions;
+    :返回 regime_actions_table 和 regime_orders;
+    if (regime_rebalance 已启用?) then (是)
+        :打印 regime_actions_table;
+    endif
+    if (存在 regime_orders?) then (是)
+        :执行 regime 再平衡订单;
+    endif
+else (否)
+endif
+
+if (equity_buy_rebalance 是否启用?) then (是)
+    :调用 rebalance_service.check_buy_only_positions;
+    :返回 buy_actions_table 和 stocks_to_buy;
+    if (存在 stocks_to_buy?) then (是)
+        :打印 buy_actions_table;
+        :执行买入订单;
+    endif
+else (否)
+endif
+
+if (equity_sell_rebalance 是否启用?) then (是)
+    :调用 rebalance_service.check_sell_only_positions;
+    :返回 sell_actions_table 和 stocks_to_sell;
+    if (存在 stocks_to_sell?) then (是)
+        :打印 sell_actions_table;
+        :执行卖出订单;
+    endif
+else (否)
+endif
+
+stop
+
+@enduml

@@ -36,6 +36,7 @@ class PostStrategyEngine:
         self.orders = orders
         self.qualified_contracts = qualified_contracts
 
+    # 已提交但未成交的订单所产生的预期现金流
     def calc_pending_cash_balance(self) -> float:
         def get_multiplier(contract: Contract) -> float:
             if contract.secType == "BAG":
@@ -74,6 +75,7 @@ class PostStrategyEngine:
         async def vix_calls_should_be_closed() -> tuple[
             bool, Optional[Ticker], Optional[float]
         ]:
+            # 没配置这个值表示不用平仓，目前这个值设置是50，即超过50时要平仓，避免过度对冲成本
             if self.config.strategies.vix_call_hedge.close_hedges_when_vix_exceeds:
                 vix_contract = Index("VIX", "CBOE", "USD")
                 vix_ticker = await self.ibkr.get_ticker_for_contract(vix_contract)
@@ -109,9 +111,11 @@ class PostStrategyEngine:
                     ):
                         continue
                     position.contract.exchange = self.order_ops.get_order_exchange()
+                    # 查询合约当前行情
                     sell_ticker = await self.ibkr.get_ticker_for_contract(
                         position.contract
                     )
+                    # 计算打算卖多少钱 todo: 什么算法？
                     price = self.order_ops.round_vix_price(
                         round(get_lower_price(sell_ticker), 2)
                     )
@@ -132,6 +136,7 @@ class PostStrategyEngine:
             vixmo_contract = Index("VIXMO", "CBOE", "USD")
             vixmo_ticker = await self.ibkr.get_ticker_for_contract(vixmo_contract)
             weight = 0.0
+            # 根据vixmo市场行情，匹配对应的权重
             for allocation in self.config.strategies.vix_call_hedge.allocation:
                 if (
                     allocation.lower_bound
@@ -154,11 +159,13 @@ class PostStrategyEngine:
                 ):
                     weight = allocation.weight
                     break
+            
+            # 根据权重看到底分配多少资金用于购买vix call
             allocation_amount = float(account_summary["NetLiquidation"].value) * weight
             if weight <= 0:
                 return
             buy_ticker = await self.option_scanner.find_eligible_contracts(
-                Index("VIX", "CBOE", "USD"),
+                Index("VIX", "CBOE", "USD"), # 这个应该是指指数型期权
                 "C",
                 0,
                 target_delta=self.config.strategies.vix_call_hedge.delta,
@@ -167,9 +174,11 @@ class PostStrategyEngine:
             )
             if not isinstance(buy_ticker.contract, Option):
                 raise RuntimeError(f"Something went wrong, buy_ticker={buy_ticker}")
+            # 价格
             price = self.order_ops.round_vix_price(
                 round(get_lower_price(buy_ticker), 2)
             )
+            # 数量
             qty = math.floor(
                 allocation_amount / price / float(buy_ticker.contract.multiplier)
             )
@@ -193,10 +202,15 @@ class PostStrategyEngine:
             log.warning("🛑 Cash management not enabled, skipping")
             return
 
+        # 目标现金余额
         target_cash_balance = self.config.strategies.cash_management.target_cash_balance
+        # 买入阈值
         buy_threshold = self.config.strategies.cash_management.buy_threshold
+        # 卖出阈值
         sell_threshold = self.config.strategies.cash_management.sell_threshold
+        # 账户中的现金
         cash_balance = math.floor(float(account_summary["TotalCashValue"].value))
+        # 已提交但未成交的订单所产生的预期现金流
         pending_balance = self.calc_pending_cash_balance()
         try:
             if not (
@@ -205,6 +219,7 @@ class PostStrategyEngine:
             ):
                 return
 
+            # 现金基金
             symbol = self.config.strategies.cash_management.cash_fund
             primary_exchange = self.config.strategies.cash_management.primary_exchange
             order_exchange = self.config.strategies.cash_management.orders.exchange

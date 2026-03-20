@@ -1,5 +1,5 @@
 @startuml ThetaGang Net Income Flow
-!theme toy
+
 skinparam maxMessageSize 200
 skinparam linetype ortho
 skinparam boxpadding 20
@@ -28,8 +28,8 @@ if (是否启用期权策略?) then (是)
     end note
 
     if (股票被行权?) then (是)
-        :**持有股票**;
-        :继续卖出看涨期权;
+        :持有股票;
+        :**阶段2: 继续卖出看涨期权 (Write Calls)**;
     else (否)
         :保留权利金;
     endif
@@ -38,26 +38,25 @@ else (否)
     :仅执行股票再平衡;
 endif
 
-if (是否启用仓位管理?) then (是)
-    :**阶段2: 仓位滚动 (Rolling)**;
-    note right
-      检查到期期权
-      滚动到下一周期
-      继续收取权利金
-    end note
+:**阶段3: 仓位滚动 (Rolling)**;
+note right
+  检查到期期权
+  滚动到下一周期
+  继续收取权利金
+end note
 
-    :**阶段3: 平仓 (Closing)**;
-    note right
-      获利了结
-      止损平仓
-    end note
-endif
+:**阶段4: 平仓 (Closing)**;
+note right
+  获利了结
+  止损平仓
+end note
+
 
 if (是否启用风控?) then (是)
-    :**阶段4: VIX 对冲**;
+    :**阶段5: VIX 对冲**;
     note right: 防止黑天鹅事件
 
-    :**阶段5: 现金管理**;
+    :**阶段6: 现金管理**;
     note right: 保持流动性
 endif
 

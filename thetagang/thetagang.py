@@ -1,11 +1,15 @@
 import asyncio
+import json
+import sys
 from asyncio import Future
 from pathlib import Path
 from typing import Any, Awaitable, Optional, Protocol, cast
 
 import tomlkit
 from ib_async import IB, IBC, Contract, Watchdog, util
+from rich import print_json, box
 from rich.console import Console
+from rich.table import Table
 
 from thetagang import log
 from thetagang.config import Config, enabled_stage_ids_from_run, stage_enabled_map
@@ -74,8 +78,27 @@ def start(
 
     config_doc = tomlkit.parse(raw_config).unwrap()
     config = Config(**config_doc)
+    # print_json(data=config.model_dump(mode='json'))
+    # sys.exit(0)
     run_stage_flags = stage_enabled_map(config)
     run_stage_order = enabled_stage_ids_from_run(config.run)
+
+
+    console = Console()
+    # 表格1: run_stage_flags (字典)
+    flags_table = Table(title="Stage Flags", show_edge=True, show_lines=True)
+    flags_table.add_column("Stage ID", style="cyan")
+    flags_table.add_column("Enabled", justify="center")
+    for stage_id, enabled in run_stage_flags.items():
+        flags_table.add_row(stage_id, "✓" if enabled else "✗")
+    console.print(flags_table)
+    # 表格2: run_stage_order (列表)
+    order_table = Table(title="Stage Order",show_lines=True)
+    order_table.add_column("Index", justify="right", style="dim")
+    order_table.add_column("Stage ID", style="cyan")
+    for idx, stage_id in enumerate(run_stage_order):
+        order_table.add_row(str(idx + 1), stage_id)
+    console.print(order_table)
 
     config.display(config_path)
 
@@ -130,7 +153,6 @@ def start(
         # TWS version is pinned to current stable
         ibc_config = config.runtime.ibc
         ibc = IBC(1037, **ibc_config.to_dict())
-        print(ibc_config.to_dict())
         log.info(f"Starting TWS with twsVersion={ibc.twsVersion}")
 
         ib.RaiseRequestErrors = ibc_config.RaiseRequestErrors

@@ -120,6 +120,7 @@ class EquityRebalanceEngine:
         account_summary: Dict[str, AccountValue],
         portfolio_positions: Dict[str, List[PortfolioItem]],
     ) -> Tuple[Table, List[Tuple[str, str, int]]]:
+        # 获取每只股票的仓位
         stock_positions = [
             position
             for symbol in portfolio_positions
@@ -139,24 +140,31 @@ class EquityRebalanceEngine:
         buy_actions_table.add_column("Action")
 
         to_buy: List[Tuple[str, str, int]] = []
+        # 目前没配置，所以是空的
         regime_symbols = self._regime_rebalance_symbols()
+        # 每个标的的配置
         symbols = resolve_symbol_configs(self.config, context="buy-only rebalancing")
+        # 目前都是关闭状态，所以这个列表也是空的
         buy_only_symbols = [
             symbol
             for symbol in symbols.keys()
             if self.config.is_buy_only_rebalancing(symbol)
             and symbol not in regime_symbols
         ]
+        # 因为目前equity_rebalance是off，所在这里就直接返回了。
         if not buy_only_symbols:
             return (buy_actions_table, to_buy)
 
+        # 检测要买入的仓位
         async def check_buy_position_task(symbol: str) -> None:
             ticker = await self.ibkr.get_ticker_for_stock(
                 symbol, self.get_primary_exchange(symbol)
             )
+            # 当前仓位
             current_position = math.floor(
                 stock_symbols[symbol].position if symbol in stock_symbols else 0
             )
+            # 该标的目标购买力
             target_value = round(symbols[symbol].weight * total_buying_power, 2)
             market_price = ticker.marketPrice()
             if (
@@ -168,22 +176,28 @@ class EquityRebalanceEngine:
                     f"Invalid market price for {symbol} (market_price={market_price}), skipping for now"
                 )
                 return
+            # 目标购买股数
             target_shares = math.floor(target_value / market_price)
+            # 需要补仓股数 = 目标购买股数 - 当前仓位
             shares_to_buy = target_shares - current_position
-
+            # wheel平衡策略，目前是关闭状态
             rebalance_policy = self.config.wheel_rebalance_policy(symbol)
             symbol_config = symbols[symbol]
+            # 最小购买份额 min_threshold_shares > buy_only_min_threshold_shares > 1
             min_shares = (
                 self._as_int_or_none(rebalance_policy.min_threshold_shares)
                 or self._as_int_or_none(symbol_config.buy_only_min_threshold_shares)
                 or 1
             )
+            # 最小账户 min_threshold_amount > buy_only_min_threshold_amount
             min_amount = self._as_float_or_none(
                 rebalance_policy.min_threshold_amount
             ) or self._as_float_or_none(symbol_config.buy_only_min_threshold_amount)
+            # 最小百分比 rebalance_policy.min_threshold_percent > symbol_config.buy_only_min_threshold_percent
             min_percent = self._as_float_or_none(
                 rebalance_policy.min_threshold_percent
             ) or self._as_float_or_none(symbol_config.buy_only_min_threshold_percent)
+            # 最小相对百分比 = rebalance_policy.min_threshold_percent_relative > symbol_config.buy_only_min_threshold_percent_relative
             min_percent_relative = self._as_float_or_none(
                 rebalance_policy.min_threshold_percent_relative
             ) or self._as_float_or_none(
@@ -205,14 +219,16 @@ class EquityRebalanceEngine:
                 and shares_to_buy > 0
             ):
                 current_value = current_position * market_price
+                # 当前标的资金空闲率
                 relative_diff = (target_value - current_value) / target_value
+                # 当前标的资金空闲率 < 最小相对百分比 时说明可用资金太少，不再需要够买
                 if relative_diff < min_percent_relative:
                     buy_actions_table.add_row(
                         symbol,
                         ifmt(current_position),
                         ifmt(target_shares),
                         ifmt(0),
-                        f"[yellow]Below relative threshold {min_percent_relative:.1%} (diff: {relative_diff:.1%})",
+                        f"[yellow]当前标的资金空闲率小于min_percent_relative {min_percent_relative:.1%} (diff: {relative_diff:.1%})",
                     )
                     return
 

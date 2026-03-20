@@ -25,7 +25,7 @@ end note
 
 if (到期时股价 > 行权价?) then (是)
     :期权到期作废;
-    note right: 获得全部权利金 #88CC88
+    note right: 获得全部权利金 
 else (否)
     :期权被行权;
     :**以行权价买入股票**;
@@ -47,7 +47,7 @@ end note
 
 if (到期时股价 < 行权价?) then (是)
     :期权到期作废;
-    note right: 保留权利金 + 股票 #88CC88
+    note right: 保留权利金 + 股票 
 else (否)
     :期权被行权;
     :**以行权价卖出股票**;

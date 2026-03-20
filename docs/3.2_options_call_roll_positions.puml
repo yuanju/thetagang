@@ -1,0 +1,75 @@
+@startuml CALL是否可以Roll - 决策流程图
+
+skinparam linetype ortho
+skinparam componentStyle uml2
+skinparam nodesep 50
+skinparam ranksep 60
+
+start
+partition 遍历所有持仓期权[loop] {
+    if (long_call OR not trading_is_allowed(symbol)) then ( 是 )
+        stop
+    endif
+
+    if (当前期权已是ITM AND config.always_when_itm) then ( true )
+         #LightGreen:[允许] 强制Roll;
+        note left
+            config.always_when_itm = true
+            价内期权强制roll
+        end note
+        stop
+    endif
+
+    if (当前期权已是ITM AND config.roll_when.calls.itm) then ( false )
+
+        stop
+         note left
+            config.roll_when.calls.itm = false,不允许Roll价内期权
+            目前系统配置是 true，价内call也允许roll操作
+        end note
+    endif
+
+    if (有超额CALL AND roll_when.calls.has_excess) then ( false )
+        stop
+        note left
+            **超额Call**: 相较于所配置的权重来说已经卖超了
+            配置有超配Call持仓禁止roll
+            配置 has_excess=false
+        end note
+    endif
+
+    if (config.max_dte 配置存在 AND 当前标的期权剩余天数 > config.max_dte) then (是)
+        stop
+        note left
+            还未接近到期日
+            不需要提前Roll
+        end note
+
+    endif
+
+    if (当前标的净利润 >= config.roll_when_pnl?) then (是)
+        #LightGreen:[允许] 收益达标;
+        note left
+            收益 >= 配置的roll_when.pnl
+            收益已达标，可以Roll
+        end note
+        stop
+    endif
+
+    if (当前标的期权剩余天数 <= config.roll_when_dte 且 当前标的净利润 >= config.min_pnl) then ( 到 )
+        #LightGreen:[允许] 满足最小收益;
+        note left
+            临近到期且有净最小收益
+            可以Roll到下一期
+        end note
+        stop
+    endif
+
+
+
+    stop
+    note left
+    不允许roll
+    end note
+}
+@enduml

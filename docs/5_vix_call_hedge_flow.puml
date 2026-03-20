@@ -1,0 +1,91 @@
+@startuml
+
+
+title VIX Call Hedge 逻辑流程图
+
+
+
+|平仓|
+start
+
+if (检查 VIX Call Hedge 是否启用?) then ( 否 )
+    stop
+endif
+
+: **计算当前VIX看涨期权的净持仓量**
+不包括临期 ignore_dte 内的;
+note right
+为什么不包括呢？
+net_vix_call_count = net_option_positions("VIX", portfolio_positions, "C", ignore_dte);
+end note
+
+if (net_vix_call_count > 0?) then ( 是 )
+
+    if (是否需要平仓\n当VIX市场价达到一定值时平仓) then (否)
+        stop
+    else (市场价 > strategies.vix_call_hedge.close_hedges_when_vix_exceeds)
+
+        partition 遍历所有VIX期权持仓{
+            if(position < 0) then ( 是 )
+                stop
+            else (否)
+                #LightGreen:创建平仓卖出订单;
+                :加入订单队列;
+            endif
+        }
+
+        stop
+    endif
+else (否)
+endif
+
+|建仓|
+
+if (**检查是否满足平仓条件**\n这里之所以又校验一次是因\n为只有在没达到平仓条件时\n才允许下单VIX期权) then (  是  )
+    stop
+endif
+
+
+: **计算购买力权重**
+不同的VIXMO对应不同的相对于净资产权重
+计算建仓金额 allocation_amount = 账户净资产 × weight;
+note right
+    strategies.vix_call_hedge.allocation
+    三种匹配情况:
+    1. lower <= VIXMO < upper
+    2. lower <= VIXMO
+    3. VIXMO < upper
+end note
+
+if (校验权重值) then ( 如果权重小于等于0，不建仓 )
+    ':weight <= 0，权重太轻不满足购买条件;
+    stop
+endif
+
+:查找符合条件的 VIX 看涨期权;
+note right
+* 目标 delta
+* 目标 DTE
+* 最低价格
+end note
+
+if (期权类型检查?) then ( 不是Option )
+    ':抛出 RuntimeError;
+    stop
+endif
+
+:计算买入限价;
+note right
+    round_price = round(lower_price, 2)
+end note
+:计算买入数量;
+note right
+    qty = floor(净资产 × weight / price / multiplier)
+end note
+
+:创建限价买入订单;
+#LightGreen:加入订单队列;
+
+end
+
+@enduml

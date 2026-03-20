@@ -65,8 +65,8 @@ async def run_equity_rebalance_stages(
         ) = await deps.rebalance_service.check_buy_only_positions(
             account_summary, portfolio_positions
         )
+        log.print(buy_actions_table)
         if stocks_to_buy:
-            log.print(buy_actions_table)
             await deps.rebalance_service.execute_buy_orders(stocks_to_buy)
 
     if "equity_sell_rebalance" in deps.enabled_stages:
@@ -76,6 +76,6 @@ async def run_equity_rebalance_stages(
         ) = await deps.rebalance_service.check_sell_only_positions(
             account_summary, portfolio_positions
         )
+        log.print(sell_actions_table)
         if stocks_to_sell:
-            log.print(sell_actions_table)
             await deps.rebalance_service.execute_sell_orders(stocks_to_sell)

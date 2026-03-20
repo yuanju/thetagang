@@ -520,6 +520,7 @@ class Config(BaseModel, DisplayMixin):
     def regime_rebalance(self) -> RegimeRebalanceStrategyConfig:
         return self.strategies.regime_rebalance
 
+    # 轮子平衡策略, 目前是关闭状态
     def wheel_rebalance_policy(self, symbol: str) -> RebalanceExecutionPolicy:
         return self.strategies.wheel.equity_rebalance.resolve(
             symbol, fallback_mode=RebalanceMode.off
@@ -731,6 +732,7 @@ class Config(BaseModel, DisplayMixin):
             return symbol_config.calls.cap_target_floor
         return self.write_when.calls.cap_target_floor
 
+    # 限价
     def get_strike_limit(self, symbol: str, right: str) -> Optional[float]:
         p_or_c = "calls" if right.upper().startswith("C") else "puts"
         symbol_config = self.symbols.get(symbol)
