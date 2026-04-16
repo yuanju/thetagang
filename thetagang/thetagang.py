@@ -1,5 +1,6 @@
 import asyncio
 import json
+import signal
 import sys
 from asyncio import Future
 from pathlib import Path
@@ -9,6 +10,7 @@ import tomlkit
 from ib_async import IB, IBC, Contract, Watchdog, util
 from rich import print_json, box
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from thetagang import log
@@ -63,6 +65,7 @@ def start(
         migrate_only=migrate_config,
         auto_approve=auto_approve_migration,
     )
+    console = Console()
 
     raw_config = migration_flow.config_text
     if migrate_config:
@@ -84,7 +87,6 @@ def start(
     run_stage_order = enabled_stage_ids_from_run(config.run)
 
 
-    console = Console()
     # 表格1: run_stage_flags (字典)
     flags_table = Table(title="Stage Flags", show_edge=True, show_lines=True)
     flags_table.add_column("Stage ID", style="cyan")
@@ -148,11 +150,11 @@ def start(
         currency=probe_contract_config.currency,
         exchange=probe_contract_config.exchange,
     )
-
+    console.print(without_ibc,'without-ibc')
     if not without_ibc:
         # TWS version is pinned to current stable
         ibc_config = config.runtime.ibc
-        ibc = IBC(1037, **ibc_config.to_dict())
+        ibc = IBC("10.44", **ibc_config.to_dict())
         log.info(f"Starting TWS with twsVersion={ibc.twsVersion}")
 
         ib.RaiseRequestErrors = ibc_config.RaiseRequestErrors
@@ -166,12 +168,15 @@ def start(
             watchdog.start()
             try:
                 await completion_future
+            except Exception as exc:
+                log.error(f"Unexpected error in trading loop: {exc}")
             finally:
                 watchdog.stop()
                 await ibc.terminateAsync()
 
         cast(_IBRunner, ib).run(run_with_watchdog())
     else:
+        console.print(watchdog_config)
         ib.connect(
             watchdog_config.host,
             watchdog_config.port,

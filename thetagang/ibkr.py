@@ -153,6 +153,11 @@ class IBKR:
             contract.symbol, "", contract.secType, contract.conId
         )
 
+    # 向盈透证券（Interactive Brokers, IB）的服务器请求验证并完善合约细节
+    # 当你创建一个合约对象（如股票、期权、外汇等）时，通常只提供了最基本的信息（例如股票代码 "AAPL" 或货币对 "EURUSD"）。
+    # IB 系统中可能存在多个具有相同基本属性但不同详细参数（如交易所、主合约、货币、到期日等）的合约。
+    # qualifyContractsAsync 的作用就是将这些“模糊”的合约定义发送给 TWS 或 IB Gateway，由服务器返回完全限定（fully qualified）、
+    # 包含所有必要交易细节的合约对象
     async def qualify_contracts(self, *contracts: Contract) -> List[Contract]:
         results = await self.ib.qualifyContractsAsync(*contracts)
         # Filter out None values and flatten any nested lists
@@ -426,6 +431,7 @@ class IBKR:
         self, trades: List[Trade], timetout: int = 60
     ) -> None:
         tasks: List[Coroutine[Any, Any, bool]] = [
+            # 交易在timeout时间内是否提交成功
             self.__trade_wait_for_condition__(
                 trade,
                 lambda trade: trade.orderStatus.status
@@ -483,6 +489,7 @@ class IBKR:
             f"remaining={getattr(trade.orderStatus, 'remaining', '?')})"
         )
 
+    # 交易在一段时间内是否满足条件
     async def __trade_wait_for_condition__(
         self, trade: Trade, condition: Callable[[Trade], bool], timeout: float
     ) -> bool:

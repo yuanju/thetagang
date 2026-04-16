@@ -373,6 +373,8 @@ async def test_refresh_positions_uses_timeout_wrapper(ibkr, mocker):
     ibkr.ib.reqPositionsAsync.assert_called_once_with()
     assert await_wrapper.await_count == 1
     await_args = await_wrapper.await_args
+    print(ibkr.ib)
+    print(await_wrapper)
     assert await_args.args[0] is req_future
     assert await_args.args[1] == "positions snapshot"
 

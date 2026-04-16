@@ -76,7 +76,12 @@ def track(sequence: Iterable[T], description: str, total: int) -> Iterator[T]:
         MofNCompleteColumn(),
         TaskProgressColumn(),
     )
-
+    # yield工作原理
+    # 调用 track(my_list, "desc", 10) 不会立即执行函数体
+    # 而是返回一个生成器对象
+    # 当你 for item in track(...) 遍历时，代码才会执行
+    # 每次循环遇到 yield item，函数暂停，返回 item 给调用者
+    # 下一次迭代从上次暂停处继续
     with progress:
         task_id = progress.add_task(description, total=total)
         for item in sequence:

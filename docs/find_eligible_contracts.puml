@@ -1,6 +1,6 @@
 @startuml find_eligible_contracts - 查找符合条件的期权合约
 
-!theme plain
+
 hide circle
 skinparam linetype ortho
 skinparam componentStyle uml2

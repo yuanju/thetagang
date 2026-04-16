@@ -17,6 +17,8 @@ dependencies = [
   "annotated-types>=0.7.0,<0.8",
   "polyfactory>=2.18.1,<4",
   "exchange-calendars>=4.12",
+  "dingtalkchatbot",
+  "plotly>=5.18,<6",
 ]
 description = "ThetaGang is an IBKR bot for getting money"
 license = "AGPL-3.0-only"
@@ -71,3 +73,6 @@ include = ["thetagang/**", "alembic.ini", "alembic/**"]
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+dingtalkchatbot = { git = "https://github.com/zhuifengshen/DingtalkChatbot.git" }

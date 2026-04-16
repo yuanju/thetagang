@@ -13,6 +13,10 @@ from ib_async import (
 from rich.console import Console
 from rich.table import Table
 
+from thetagang.ding import send_markdown
+
+from common.print import print_ding_orders, rich_print_pretty
+
 console = Console()
 
 
@@ -127,13 +131,13 @@ def display_executions(fills: list):
     # console.print(f"  净支出: ${total_value + total_commission:,.2f}")
 
 
-def display_orders(orders: list):
+def display_orders(orders: list,title:str):
     """显示当前挂单"""
     if not orders:
-        console.print("[yellow]没有挂单[/yellow]")
+        # console.print("[yellow]没有挂单[/yellow]")
         return
 
-    table = Table(title=f"当前挂单 Open Orders (共 {len(orders)} 条)")
+    table = Table(title=f"{title} (共 {len(orders)} 条)")
     table.add_column("订单号", justify="right")
     table.add_column("标的", style="cyan")
     table.add_column("方向", justify="right")
@@ -258,7 +262,7 @@ def display_trades(trades: list):
 )
 @click.option(
     "--port",
-    default=7496,
+    default=4001,
     type=int,
     help="TWS/IBGW 端口 (default: 7496 for TWS, 4002 for IBGW paper)",
 )
@@ -320,14 +324,18 @@ def main(
                 recent_trades = await get_trades(ib)
                 display_trades(recent_trades)
 
-            # # 显示当前挂单
-            # if orders:
-            #     # console.print("[bold]=== 当前挂单 ===[/bold]")
-            #     open_orders = await get_open_orders(ib)
-            #     display_orders(open_orders)
-            #     complete_orders = await get_complete_orders(ib)
-            #     display_orders(complete_orders)
-            #     console.print()
+            # 显示当前挂单
+            if orders:
+                # console.print("[bold]=== 当前挂单 ===[/bold]")
+                open_orders = await get_open_orders(ib)
+                display_orders(open_orders, "当前挂单 Open Orders")
+                complete_orders = await get_complete_orders(ib)
+                console.log(complete_orders)
+                if(len(complete_orders) > 0):
+                    rich_print_pretty(complete_orders[0])
+                # console.print(markdown_orders(complete_orders, '已提交订单'))
+                # send_markdown(print_ding_orders(complete_orders, '已提交订单'))
+                display_orders(complete_orders, "已完成订单 Completed Orders")
 
 
 

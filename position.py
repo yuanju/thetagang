@@ -18,10 +18,10 @@ from thetagang.util import position_pnl
 console = Console()
 
 
-async def connect_ibkr(client_id: int = 1, port: int = 7496) -> IB:
+async def connect_ibkr(client_id: int = 1, port: int = 4001, account:str = '') -> IB:
     """连接到 IBKR TWS/IBGW"""
     ib = IB()
-    await ib.connectAsync("127.0.0.1", port, clientId=client_id)
+    await ib.connectAsync("127.0.0.1", port, clientId=client_id, account=account, timeout=5)
     return ib
 
 
@@ -343,9 +343,9 @@ def display_account_summary(summary: dict):
 )
 @click.option(
     "--port",
-    default=7496,
+    default=4001,
     type=int,
-    help="TWS/IBGW 端口 (default: 7496 for TWS, 4002 for IBGW paper)",
+    help="TWS/IBGW 端口 (default: 4001 for TWS, 4002 for IBGW paper)",
 )
 @click.option(
     "--account",
@@ -388,11 +388,12 @@ def main(
     async def run():
         try:
             console.print(f"[bold blue]连接到 IBKR...[/bold blue]")
-            ib = await connect_ibkr(client_id, port)
+            ib = await connect_ibkr(client_id, port, account)
             console.print(f"[bold green]已连接![/bold green]\n")
 
             # 获取账户列表
             accounts = ib.managedAccounts()
+            print(accounts)
             account_id = account if account else (accounts[0] if accounts else None)
 
             console.print(f"[cyan]账户:[/cyan] {account_id}\n")
@@ -410,11 +411,16 @@ def main(
             # portfolio_positions = ibkr.portfolio('U15981136')
             # 关键：使用 reqPositionsAsync
 
-            await ib.reqAccountUpdatesAsync('U15981136')
+            # console.print("[cyan]请求账户更新...[/cyan]")
+            # await ib.reqAccountUpdatesAsync(account_id)
+            # console.print("[cyan]获取持仓...[/cyan]")
             positions = await ib.reqPositionsAsync()
+            console.print(f"[green]获取到 {len(positions)} 个持仓[/green]")
             # 关键：使用 await 等待数据更新
             await asyncio.sleep(2) # 或者使用 app.waitOnUpdate() 的异步版本
-            portfolio_items = await get_portfolio(ib, 'U15981136')
+            console.print("[cyan]获取投资组合...[/cyan]")
+            portfolio_items = await get_portfolio(ib, account_id)
+            console.print(f"[green]获取到 {len(portfolio_items)} 个投资组合项目[/green]")
             # # 显示持仓
             # if positions:
             #     console.print("[bold]=== 持仓 ===[/bold]")

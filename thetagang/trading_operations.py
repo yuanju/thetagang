@@ -205,6 +205,7 @@ class OptionChainScanner:
             f" from expirations {expirations[0]} to {expirations[-1]}"
         )
 
+        # 候选期权列表，这里是日期与期权价格的排列组合
         contracts = [
             Option(
                 underlying.symbol,
@@ -218,7 +219,7 @@ class OptionChainScanner:
         ]
         contracts = await self.ibkr.qualify_contracts(*contracts)
         contracts = [c for c in contracts if c is not None]
-
+        # 排除正在roll的旧合约，这里是通过日期相等或价格相等时就认定是旧合约
         if exclude_exp_strike:
             contracts = [
                 c
@@ -228,7 +229,7 @@ class OptionChainScanner:
                     or c.strike != exclude_exp_strike[0]
                 )
             ]
-
+        # 获取合约当前市场价
         tickers = await self.ibkr.get_tickers_for_contracts(
             underlying.symbol,
             contracts,
@@ -258,6 +259,8 @@ class OptionChainScanner:
                 and abs(delta) <= contract_target_delta
             )
 
+        # 期权行权价 > 最小价格(当前持仓合约的市场价+mini_credit) 且 (当前为Call 或者 期权行权价 <= 合约市场价+标的市场价)
+        # 如果我roll put时 条件(期权行权价 > 最小价格(当前持仓合约的市场价+mini_credit))也要满足？
         def price_is_valid(ticker: Ticker) -> bool:
             def cost_doesnt_exceed_market_price(ticker: Ticker) -> bool:
                 return (

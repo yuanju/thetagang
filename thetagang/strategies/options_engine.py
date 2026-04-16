@@ -1217,6 +1217,12 @@ class OptionsStrategyEngine:
                         strike_limit = min([strike_limit, position.contract.strike])
 
                 kind = "calls" if right.startswith("C") else "puts"
+                # 1. 这里定义延迟执行有何好处？
+                #    目前这里没啥好处理
+                # 2. 什么是最小信用额(minimum_credit)？
+                #    一个配置的下限，防止以过低价格成交， 如果配置了credit_only,那最小价格就是minimum_credit
+                #    否则的话最小价格就是 市场价 + 最小信用额
+                # 3. 当前credit_only设置的为false，即 minimum_price = 市场价 + minimum_credit
                 minimum_price = (
                     (lambda: self.config.runtime.orders.minimum_credit)
                     if not getattr(

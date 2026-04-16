@@ -2,9 +2,11 @@ import asyncio
 import logging
 import math
 import random
+import signal
 from asyncio import Future
 from datetime import date, datetime
 from typing import Any, Coroutine, Dict, List, Optional, Tuple, cast
+from  common.print import print_ding_orders
 
 import numpy as np
 from ib_async import (
@@ -16,7 +18,7 @@ from ib_async import (
 from ib_async.contract import Contract, Option, Stock
 from ib_async.ib import IB
 from ib_async.order import LimitOrder
-from rich.console import Group
+from rich.console import Group, Console
 from rich.panel import Panel
 from rich.table import Table
 
@@ -71,14 +73,19 @@ from thetagang.util import (
     position_pnl,
     would_increase_spread,
 )
+from .ding import send_markdown
 
 from .options import option_dte
+
+from rich import print
+from rich.pretty import Pretty
 
 # Turn off some of the more annoying logging output from ib_async
 #logging.getLogger("ib_async.ib").setLevel(logging.ERROR)
 #logging.getLogger("ib_async.wrapper").setLevel(logging.CRITICAL)
 #logging.getLogger("ib_async.wrapper").setLevel(logging.ERROR)
 
+console = Console()
 
 class PortfolioManager:
     @staticmethod
@@ -470,41 +477,78 @@ class PortfolioManager:
         Dict[str, AccountValue],
         Dict[str, List[PortfolioItem]],
     ]:
+
         account_summary = await self.ibkr.account_summary(self.account_number)
         account_summary = account_summary_to_dict(account_summary)
+
 
         if "NetLiquidation" not in account_summary:
             raise RuntimeError(
                 f"Account number {self.config.runtime.account.number} appears invalid (no account data returned)"
             )
 
-        table = Table(title="Account summary")
-        table.add_column("Item")
-        table.add_column("Value", justify="right")
-        table.add_row(
-            "NetLiquidation 净清算价值", dfmt(account_summary["NetLiquidation"].value, 0)
-        )
-        # 账户在不违反保证金规则的情况下，可用于新交易或提取的备用购买力或现金数额
-        table.add_row(
-            "ExcessLiquidity 超额流动性", dfmt(account_summary["ExcessLiquidity"].value, 0)
-        )
-        # 初始保证金要求， 它是指根据监管规定（如美国的T+1保证金规则），在建立一个新的杠杆头寸（例如融资买入股票或卖出裸期权）时，您首次必须存入的最低资金额度。这个额度通常是交易金额的一个特定百分比。
-        table.add_row("InitMarginReq 初始保证金要求", dfmt(account_summary["InitMarginReq"].value, 0))
-        # Full Maintenance Margin Requirement 的缩写，中文翻译为 全额维持保证金要求。
-        # 它是指根据Regulation T (T条例) 的标准计算出的维持保证金要求。T条例是美国联邦储备委员会制定的法规，规定了在普通经纪账户中融资交易的标准保证金比例（通常是50%）
-        table.add_row(
-            "FullMaintMarginReq 全额维持保证金要求", dfmt(account_summary["FullMaintMarginReq"].value, 0)
-        )
-        # 账户在不存入额外资金或不平仓现有头寸的情况下，能调动的“总弹药量”，
-        table.add_row("BuyingPower 购买力", dfmt(account_summary["BuyingPower"].value, 0))
-        table.add_row("TotalCashValue 总现金", dfmt(account_summary["TotalCashValue"].value, 0))
-        # 缓冲比率， Cushion 衡量的是您账户的超额流动性 (Excess Liquidity) 相对于您当前持仓总价值的占比
-        table.add_row("Cushion", pfmt(account_summary["Cushion"].value, 0))
-        table.add_section()
-        table.add_row(
-            "Target buying power usage 目标购买力使用", dfmt(self.get_buying_power(account_summary), 0)
-        )
-        log.print(Panel(table))
+        # table = Table(title="Account summary")
+        # table.add_column("Item")
+        # table.add_column("Value", justify="right")
+        # table.add_row(
+        #     "NetLiquidation 净清算价值", dfmt(account_summary["NetLiquidation"].value, 0)
+        # )
+        # # 账户在不违反保证金规则的情况下，可用于新交易或提取的备用购买力或现金数额
+        # table.add_row(
+        #     "ExcessLiquidity 超额流动性", dfmt(account_summary["ExcessLiquidity"].value, 0)
+        # )
+        # # 初始保证金要求， 它是指根据监管规定（如美国的T+1保证金规则），在建立一个新的杠杆头寸（例如融资买入股票或卖出裸期权）时，您首次必须存入的最低资金额度。这个额度通常是交易金额的一个特定百分比。
+        # table.add_row("InitMarginReq 初始保证金要求", dfmt(account_summary["InitMarginReq"].value, 0))
+        # # Full Maintenance Margin Requirement 的缩写，中文翻译为 全额维持保证金要求。
+        # # 它是指根据Regulation T (T条例) 的标准计算出的维持保证金要求。T条例是美国联邦储备委员会制定的法规，规定了在普通经纪账户中融资交易的标准保证金比例（通常是50%）
+        # table.add_row(
+        #     "FullMaintMarginReq 全额维持保证金要求", dfmt(account_summary["FullMaintMarginReq"].value, 0)
+        # )
+        # # 账户在不存入额外资金或不平仓现有头寸的情况下，能调动的“总弹药量”，
+        # table.add_row("BuyingPower 购买力", dfmt(account_summary["BuyingPower"].value, 0))
+        # table.add_row("TotalCashValue 总现金", dfmt(account_summary["TotalCashValue"].value, 0))
+        # # 缓冲比率， Cushion 衡量的是您账户的超额流动性 (Excess Liquidity) 相对于您当前持仓总价值的占比
+        # table.add_row("Cushion", pfmt(account_summary["Cushion"].value, 0))
+        # table.add_section()
+        # table.add_row(
+        #     "Target buying power usage 目标购买力使用", dfmt(self.get_buying_power(account_summary), 0)
+        # )
+        table = Table(title="账户摘要 Account Summary")
+        table.add_column("项目", style="cyan")
+        table.add_column("值", justify="right", style="green")
+        key_names = {
+            "NetLiquidation": "净资产 (NetLiquidation)",
+            "TotalCashValue": "现金价值 (TotalCashValue)",
+            "BuyingPower": "购买力 (BuyingPower)",
+            "ExcessLiquidity": "超额流动性 (ExcessLiquidity)",
+            "Cushion": "缓冲 (Cushion)",
+            "InitMarginReq": "初始保证金 (InitMarginReq)",
+            "MaintMarginReq": "维持保证金 (MaintMarginReq)",
+            "UnrealizedPnL": "未实现盈亏 (UnrealizedPnL)",
+            "RealizedPnL": "已实现盈亏 (RealizedPnL)",
+            "DividendBalance": "股息余额 (DividendBalance)",
+            "AccruedCash": "应计现金 (AccruedCash)",
+            "AvailableFunds": "可用资金 (AvailableFunds)",
+            "FullInitMarginReq": "完整初始保证金 (FullInitMarginReq)",
+            "FullMaintMarginReq": "完整维持保证金 (FullMaintMarginReq)",
+            "GrossPositionValue": "持仓总值 (GrossPositionValue)",
+            "NetOptionValue": "期权净值 (NetOptionValue)",
+            "Leverage": "杠杆率 (Leverage)",
+            "EquityWithLoanValue": "含贷款股权价值 (EquityWithLoanValue)",
+        }
+
+        for key, value in account_summary.items():
+            name = key_names.get(key, key)
+            try:
+                # 尝试转换为数字
+                num_value = float(value.value)
+                display_value = f"{num_value:,.2f}"
+            except (ValueError, TypeError):
+                display_value = str(value.value)
+
+            table.add_row(name, display_value)
+
+        log.print(table)
 
         portfolio_positions = await self.get_portfolio_positions()
         untracked_positions = self.last_untracked_positions
@@ -642,6 +686,7 @@ class PortfolioManager:
                 table.add_section()
             first = False
             add_symbol_positions(symbol, position)
+
 
         if untracked_positions:
             table.add_section()
@@ -801,6 +846,9 @@ class PortfolioManager:
                 unexpected_state = [
                     trade for trade in incomplete_trades if trade not in still_working
                 ]
+                filled_state = [
+                    trade for trade in incomplete_trades if getattr(trade.orderStatus, "status", "") in {"Filled"}
+                ]
                 open_orders = ", ".join(
                     f"{trade.contract.symbol} (OrderId: {trade.order.orderId}, status={getattr(trade.orderStatus, 'status', 'UNKNOWN')})"
                     for trade in still_working
@@ -810,6 +858,9 @@ class PortfolioManager:
                         "Run completed with working submitted orders still open at broker: "
                         f"{open_orders}"
                     )
+                    send_markdown(print_ding_orders([trade for trade in still_working], "已提交订单"))
+                if filled_state:
+                    send_markdown(print_ding_orders([trade for trade in filled_state], "已成交订单"))
                 if unexpected_state:
                     unexpected_orders = ", ".join(
                         f"{trade.contract.symbol} (OrderId: {trade.order.orderId}, status={getattr(trade.orderStatus, 'status', 'UNKNOWN')})"
@@ -827,10 +878,29 @@ class PortfolioManager:
             raise
 
         finally:
-            # Shut it down
-            if self.data_store:
-                self.data_store.record_event("run_end", {"success": not had_error})
+            if(self.dry_run):
+                if self.data_store:
+                    self.data_store.record_event("run_end", {"success": not had_error})
+                self.completion_future.set_result(True)
+                return
+
+            console.print(f"[bold green]订单状态监控中 (按 Ctrl+C 退出)...[/bold green]\n")
+            # 等待中断信号
+            shutdown_event = asyncio.Event()
+            def shutdown_handler():
+                console.print("\n[bold yellow]收到退出信号，正在关闭...[/bold yellow]")
+                shutdown_event.set()
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(signal.SIGINT, shutdown_handler)
+            loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
+            await shutdown_event.wait()
             self.completion_future.set_result(True)
+
+    async def showPortfolio(self):
+        # print(Pretty(self.ibkr.ib.wrapper, expand_all=True, indent_guides=True, max_length=5))
+        # print('init')
+        (account_summary, portfolio_positions) = await self.summarize_account()
+
 
     async def check_puts(
         self, portfolio_positions: Dict[str, List[PortfolioItem]]
